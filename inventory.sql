@@ -125,7 +125,7 @@ CREATE TABLE inventory_schema.sub_category_table (
 CREATE TABLE inventory_request_schema.inventory_request_table(
    inventory_request_id UUID DEFAULT uuid_generate_v4() PRIMARY KEY NOT NULL,
    inventory_request_tag_id INT NOT NULL,
-   invetory_request_name VARCHAR(4000) NOT NULL,
+   inventory_request_name VARCHAR(4000) NOT NULL,
    inventory_request_status VARCHAR(4000) DEFAULT 'AVAILABLE' NOT NULL,
    inventory_request_created TIMESTAMPTZ DEFAULT NOW() NOT NULL,
    inventory_request_date_updated TIMESTAMPTZ DEFAULT NOW() NOT NULL,
@@ -134,13 +134,15 @@ CREATE TABLE inventory_request_schema.inventory_request_table(
    inventory_request_model VARCHAR(4000) NOT NULL,
    inventory_request_serial_number VARCHAR(4000) NOT NULL,
    inventory_request_equipment_type VARCHAR(4000) NOT NULL,
+   inventory_request_old_asset_number VARCHAR(4000),
    inventory_request_category VARCHAR(4000) NOT NULL,
    inventory_request_site VARCHAR(4000) NOT NULL,
    inventory_request_location VARCHAR(4000) NOT NULL,
    inventory_request_department VARCHAR(4000) NOT NULL,
    inventory_request_purchase_order VARCHAR(4000) NOT NULL,
+   inventory_request_purchase_from VARCHAR(4000) NOT NULL,
    inventory_request_purchase_date VARCHAR(4000) NOT NULL,
-   inventory_request_purchase_form VARCHAR(4000) NOT NULL,
+   inventory_request_purchase_from VARCHAR(4000) NOT NULL,
    inventory_request_cost VARCHAR(4000) NOT NULL,
    inventory_request_si_number VARCHAR(4000) NOT NULL,
    inventory_request_due_date VARCHAR(4000),
@@ -185,7 +187,7 @@ CREATE TABLE inventory_request_schema.inventory_history_table(
 CREATE TABLE inventory_request_schema.inventory_event_table(
   inventory_event_id UUID DEFAULT uuid_generate_v4() PRIMARY KEY NOT NULL,
   inventory_event_date_created TIMESTAMPTZ DEFAULT NOW(),
-  inventory_event_ VARCHAR(4000),
+  inventory_event VARCHAR(4000),
   inventory_event_check_out_date TIMESTAMPTZ,
   inventory_event_return_date TIMESTAMPTZ,
   inventory_event_due_date TIMESTAMPTZ,
@@ -541,6 +543,43 @@ AS $$
   });
   return returnData;
 $$ LANGUAGE plv8;
+
+CREATE OR REPLACE FUNCTION modal_form_on_load(
+    input_data JSON
+)
+RETURNS JSON
+SET search_path TO ''
+AS $$
+  let returnData = {};
+  plv8.subtransaction(function() {
+    const { userId, eventId } = input_data;
+
+    const formResult = plv8.execute(`
+        SELECT event_form_form_id
+        FROM inventory_schema.event_form_connection_table
+        WHERE event_form_event_id = $1
+    `, [eventId]);
+
+    if (formResult.length > 0) {
+        const formId = formResult[0].event_form_form_id;
+        const payload = JSON.stringify({
+            userId: userId,
+            formId: formId[0].event_form_form_id
+        });
+
+        const formDataResult = plv8.execute(`
+            SELECT public.create_inventory_request_page_on_load($1)
+        `, [payload]);
+
+        if (formDataResult.length > 0) {
+            returnData = formDataResult[0];
+        }
+    }
+  });
+
+  return returnData;
+$$ LANGUAGE plv8;
+
 
 CREATE OR REPLACE FUNCTION create_asset(
   input_data JSON
@@ -1375,8 +1414,6 @@ AS $$
           assignee_last_name: row.assignee_last_name
         };
       }
-
-      // Adding the dynamic fields from custom response data
       customResponse.forEach(customField => {
         requestMap[row.inventory_request_id][customField.field_name.toLowerCase()] = customField.inventory_response_value;
       });
@@ -1385,7 +1422,7 @@ AS $$
     returnData = Object.values(requestMap);
 
     totalCount = plv8.execute(`
-      SELECT COUNT(*)
+      SELECT COUNT(*) AS count
       FROM inventory_request_schema.inventory_request_table r
       JOIN inventory_request_schema.inventory_assignee_table a
       ON a.inventory_assignee_asset_request_id = r.inventory_request_id
@@ -1412,7 +1449,6 @@ AS $$
       ${statusCondition}
     `)[0].count;
   });
-
   return {
     data: returnData,
     count: parseInt(totalCount)
@@ -1749,7 +1785,7 @@ AS $$
                     $1, $2, $3, $4, $5
                 );
             `, [
-            type,
+            type.toUppercase(),
             currentDate,
             dueDate,
             notes,
