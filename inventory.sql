@@ -67,6 +67,14 @@ CREATE TABLE inventory_schema.inventory_event_table (
   event_team_id UUID REFERENCES team_schema.team_table(team_id) NOT NULL
 );
 
+CREATE TABLE inventory_schema.customer_table (
+  customer_id UUID DEFAULT uuid_generate_v4() PRIMARY KEY NOT NULL,
+  customer_name TIMESTAMPTZ DEFAULT NOW() NOT NULl,
+  customer_company VARCHAR(4000) NOT NULL,
+  customer_email VARCHAR(4000) NOT NULL,
+  customer_team_id UUID REFERENCES team_schema.team_table(team_id) NOT NULL
+);
+
 CREATE TABLE inventory_schema.event_form_connection_table (
   event_form_id UUID DEFAULT uuid_generate_v4() PRIMARY KEY NOT NULL,
   event_form_event_id UUID REFERENCES inventory_schema.inventory_event_table(event_id) NOT NULL,
@@ -111,6 +119,7 @@ CREATE TABLE inventory_schema.inventory_group_filter_table (
   inventory_group_filter_type VARCHAR(255) NOT NULL,
   inventory_group_filter_value_id UUID NOT NULL
 );
+
 CREATE TABLE inventory_schema.custom_field_table (
   custom_field_id UUID REFERENCES inventory_schema.field_table(field_id),
   category_id UUID REFERENCES inventory_schema.category_table(category_id),
@@ -130,7 +139,8 @@ CREATE TABLE inventory_request_schema.inventory_request_table(
    inventory_request_status VARCHAR(4000) DEFAULT 'AVAILABLE' NOT NULL,
    inventory_request_created TIMESTAMPTZ DEFAULT NOW() NOT NULL,
    inventory_request_date_updated TIMESTAMPTZ DEFAULT NOW() NOT NULL,
-   inventory_request_item_code VARCHAR(4000) NOT NULL,
+   inventory_request_csi_code VARCHAR(4000) NOT NULL,
+   inventory_request_description VARCHAR (4000) NOT NULL,
    inventory_request_brand VARCHAR(4000) NOT NULL,
    inventory_request_model VARCHAR(4000) NOT NULL,
    inventory_request_serial_number VARCHAR(4000) NOT NULL,
@@ -168,6 +178,7 @@ CREATE TABLE inventory_request_schema.inventory_custom_response_table(
 CREATE TABLE inventory_request_schema.inventory_assignee_table(
   inventory_assignee_id UUID DEFAULT uuid_generate_v4() PRIMARY KEY NOT NULL,
   inventory_assignee_team_member_id UUID REFERENCES team_schema.team_member_table(team_member_id),
+  inventory_assignee_customer_id UUID REFERENCES inventory_schema.customer_table(customer_id),
   inventory_assignee_site_id UUID REFERENCES inventory_schema.site_table(site_id),
   inventory_assignee_asset_request_id UUID REFERENCES inventory_request_schema.inventory_request_table(inventory_request_id) NOT NULL
 );
@@ -198,11 +209,92 @@ CREATE TABLE inventory_request_schema.inventory_event_table(
   inventory_event_request_id UUID REFERENCES inventory_request_schema.inventory_request_table(inventory_request_id) NOT NULL
 );
 
+
 CREATE TABLE event_schema.event_sell_table(
-    event_sell_table_id UUID DEFAULT uuid_generate_v4() PRIMARY KEY NOT NULL,
+    event_sell_id UUID DEFAULT uuid_generate_v4() PRIMARY KEY NOT NULL,
     event_sell_sold_to VARCHAR(4000),
     event_sell_sold_value VARCHAR(4000)
 );
+
+CREATE TABLE event_schema.event_check_out_table(
+    event_check_out_id UUID DEFAULT uuid_generate_v4() PRIMARY KEY NOT NULL,
+    event_check_out_date_created TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    event_check_out_check_out_date TIMESTAMPTZ DEFAULT NOW(),
+    event_check_out_assigned_to VARCHAR(4000),
+    event_check_out_site VARCHAR(4000) NOT NULL,
+    event_check_out_location VARCHAR(4000),
+    event_check_out_department VARCHAR(4000)  NOT NULL,
+    event_check_out_notes VARCHAR(4000),
+    event_check_out_signature VARCHAR(4000) NOT NULL,
+    event_check_out_request_id UUID REFERENCES inventory_request_schema.inventory_request_table(inventory_request_id) NOT NULL
+);
+CREATE TABLE event_schema.event_check_in_table(
+    event_check_in_id UUID DEFAULT uuid_generate_v4() PRIMARY KEY NOT NULL,
+    event_check_in_date_created TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    event_check_in_check_in_date TIMESTAMPTZ DEFAULT NOW(),
+    event_check_in_site VARCHAR(4000) NOT NULL,
+    event_check_in_location VARCHAR(4000),
+    event_check_in_department VARCHAR(4000) NOT NULL,
+    event_check_in_notes VARCHAR(4000),
+    event_check_in_signature VARCHAR(4000) NOT NULL,
+    event_check_in_request_id UUID REFERENCES inventory_request_schema.inventory_request_table(inventory_request_id) NOT NULL
+);
+
+CREATE TABLE event_schema.event_lost_table(
+    event_lost_id UUID DEFAULT uuid_generate_v4() PRIMARY KEY NOT NULL,
+    event_lost_date_created TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    event_lost_date_lost TIMESTAMPTZ DEFAULT NOW(),
+    event_lost_signature VARCHAR(4000) NOT NULL,
+    event_lost_notes VARCHAR(4000),
+    event_lost_request_id UUID REFERENCES inventory_request_schema.inventory_request_table(inventory_request_id) NOT NULL
+);
+
+CREATE TABLE event_schema.event_broken_table(
+    event_broken_id UUID DEFAULT uuid_generate_v4() PRIMARY KEY NOT NULL,
+    event_broken_date_created TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    event_broken_date_broken TIMESTAMPTZ DEFAULT NOW(),
+    event_broken_signature VARCHAR(4000) NOT NULL,
+    event_broken_notes VARCHAR(4000),
+
+    event_broken_request_id UUID REFERENCES inventory_request_schema.inventory_request_table(inventory_request_id) NOT NULL
+);
+
+CREATE TABLE event_schema.event_donate_table(
+    event_donate_id UUID DEFAULT uuid_generate_v4() PRIMARY KEY NOT NULL,
+    event_donate_date_created TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    event_donate_date_donated TIMESTAMPTZ DEFAULT NOW(),
+    event_donate_donated_to VARCHAR(4000),
+    event_donate_donate_value INT,
+    event_donate_signature VARCHAR(4000) NOT NULL,
+    event_donate_notes VARCHAR(4000),
+
+    event_donate_request_id UUID REFERENCES inventory_request_schema.inventory_request_table(inventory_request_id) NOT NULL
+);
+
+CREATE TABLE event_schema.event_dispose_table(
+    event_dispose_id UUID DEFAULT uuid_generate_v4() PRIMARY KEY NOT NULL,
+    event_dispose_date_created TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    event_dispose_date_dispose TIMESTAMPTZ DEFAULT NOW(),
+    event_dispose_signature VARCHAR(4000) NOT NULL,
+    event_dispose_notes VARCHAR(4000),
+
+
+    event_dispose_request_id UUID REFERENCES inventory_request_schema.inventory_request_table(inventory_request_id) NOT NULL
+);
+
+CREATE TABLE event_schema.event_found_table(
+    event_found_id UUID DEFAULT uuid_generate_v4() PRIMARY KEY NOT NULL,
+    event_found_date_created TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    event_found_date_found TIMESTAMPTZ DEFAULT NOW(),
+    event_found_signature VARCHAR(4000) NOT NULL,
+    event_found_notes VARCHAR(4000),
+
+
+    event_found_request_id UUID REFERENCES inventory_request_schema.inventory_request_table(inventory_request_id) NOT NULL
+);
+
+
+
 
 -- //department from team_schema
 
@@ -216,6 +308,11 @@ GRANT ALL ON ALL TABLES IN SCHEMA inventory_request_schema TO PUBLIC;
 GRANT ALL ON ALL TABLES IN SCHEMA inventory_request_schema TO POSTGRES;
 GRANT ALL ON SCHEMA inventory_request_schema TO postgres;
 GRANT ALL ON SCHEMA inventory_request_schema TO public;
+
+GRANT ALL ON ALL TABLES IN SCHEMA event_schema TO PUBLIC;
+GRANT ALL ON ALL TABLES IN SCHEMA event_schema TO POSTGRES;
+GRANT ALL ON SCHEMA event_schema TO postgres;
+GRANT ALL ON SCHEMA event_schema TO public;
 
 
 CREATE OR REPLACE FUNCTION create_inventory_request_page_on_load(
@@ -356,7 +453,6 @@ AS $$
   return returnData;
 $$ LANGUAGE plv8;
 
-
 CREATE OR REPLACE FUNCTION modal_form_on_load(
     input_data JSON
 )
@@ -407,7 +503,8 @@ AS $$
       formId,
       teamMemberId,
       asset_name,
-      item_code,
+      csi_code,
+      description,
       brand,
       model,
       serial_number,
@@ -443,7 +540,8 @@ AS $$
 		  inventory_request_id,
           inventory_request_tag_id,
           inventory_request_name,
-          inventory_request_item_code,
+          inventory_request_csi_code,
+          inventory_request_description,
           inventory_request_brand,
           inventory_request_model,
           inventory_request_serial_number,
@@ -463,31 +561,29 @@ AS $$
         )
         VALUES
         (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
         )
         RETURNING *
       `,
       [
-        requestId,tagCount,asset_name, item_code, brand, model, serial_number, equipment_type,
+        requestId,tagCount,asset_name, csi_code,description, brand, model, serial_number, equipment_type,
         category, site, location, department, purchase_order, purchase_date,
         purchase_form, cost, si_number, formId, teamMemberId, old_asset_number
       ]
     )[0];
     plv8.execute(`
      INSERT INTO inventory_request_schema.inventory_custom_response_table
-        (inventory_response_value,inventory_response_field_id,inventory_response_asset_request_id) VALUES ${responseValues}
+        (inventory_response_value,inventory_response_field_id,inventory_response_asset_request_id)
+        VALUES
+        ${responseValues}
     `);
 
     const request_assignee = plv8.execute(
       `
         INSERT INTO inventory_request_schema.inventory_assignee_table
-        (
-          inventory_assignee_asset_request_id
-        )
+         (inventory_assignee_asset_request_id)
         VALUES
-        (
-          $1
-        )
+         ($1)
         RETURNING *
       `,
       [requestId]
@@ -505,328 +601,171 @@ AS $$
   let returnData;
   plv8.subtransaction(function() {
     const {
-      formId,
+      assetId,
       userId
     } = input_data;
 
-    const teamId = plv8.execute(`SELECT public.get_user_active_team_id('${userId}')`)[0].get_user_active_team_id;
-    if (!teamId) throw new Error("No team found");
+    const assetIdData = plv8.execute(`
+        SELECT inventory_request_id
+        FROM inventory_request_schema.inventory_request_table
+        WHERE inventory_request_tag_id = '${assetId}'
+    `)[0];
 
-    const teamMember = plv8.execute(`SELECT * FROM team_schema.team_member_table WHERE team_member_user_id = '${userId}' AND team_member_team_id = '${teamId}'`)[0];
-    if (!teamMember) throw new Error("No team member found");
-
-    const formData = plv8.execute(
-      `
-        SELECT
-          form_id,
-          form_name,
-          form_description,
-          form_date_created,
-          team_member_id,
-          user_id,
-          user_first_name,
-          user_last_name,
-          user_avatar,
-          user_username
-        FROM inventory_schema.inventory_form_table
-        INNER JOIN team_schema.team_member_table ON team_member_id = form_team_member_id
-        INNER JOIN user_schema.user_table ON user_id = team_member_user_id
-        WHERE
-          form_id = '${formId}'
-      `
-    )[0];
-
-    const sectionData = [];
-    const formSection = plv8.execute(`SELECT * FROM inventory_schema.section_table WHERE section_form_id = '${formId}' ORDER BY section_order ASC`);
-
-    formSection.forEach(section => {
-      const fieldData = plv8.execute(
-        `
-          SELECT *
-          FROM inventory_schema.field_table
-          WHERE field_section_id = '${section.section_id}'
-          AND field_is_custom_field = False AND field_is_sub_category = False AND field_is_disabled = False
-          ORDER BY field_order ASC
-        `
-      );
-
-      const fieldsWithOptions = fieldData.map(field => {
-        const optionData = plv8.execute(`
-          SELECT *
-          FROM inventory_schema.option_table
-          WHERE option_field_id = '${field.field_id}'
-          ORDER BY option_order ASC
-        `);
-
-        return {
-          ...field,
-          field_option: optionData
-        };
-      });
-
-      sectionData.push({
-        ...section,
-        section_field: fieldsWithOptions,
-      });
-    });
-
-    const form = {
-      form_id: formData.form_id,
-      form_name: formData.form_name,
-      form_description: formData.form_description,
-      form_date_created: formData.form_date_created,
-      form_team_member: {
-        team_member_id: formData.team_member_id,
-        team_member_user: {
-          user_id: formData.user_id,
-          user_first_name: formData.user_first_name,
-          user_last_name: formData.user_last_name,
-          user_avatar: formData.user_avatar,
-          user_username: formData.user_username
-        }
-      },
-      form_section: sectionData,
-    };
-
-    switch(formData.form_name) {
-      case "Asset Inventory":
-        const departmentOptions = plv8.execute(`
-          SELECT team_department_id, team_department_name
-          FROM team_schema.team_department_table
-        `).map((department, index) => {
-          return {
-            option_field_id: form.form_section[2].section_field[2].field_id,
-            option_id: department.team_department_id,
-            option_order: index,
-            option_value: department.team_department_name,
-          };
+    const payload = JSON.stringify({
+            userId: userId,
+            formId: "656a3009-7127-4960-9738-92afc42779a6"
         });
-         const categoryOptions = plv8.execute(`
-          SELECT category_id, category_name
-          FROM inventory_schema.category_table
-          WHERE category_team_id = '${teamId}'
-        `).map((category, index) => {
-          return {
-            option_field_id: form.form_section[1].section_field[0].field_id,
-            option_id: category.category_id,
-            option_order: index,
-            option_value: category.category_name,
-          };
+
+
+    const formDataResult = plv8.execute(`
+        SELECT public.create_inventory_request_page_on_load($1)
+    `, [payload])[0].create_inventory_request_page_on_load.form;
+
+    const assetInventoryData = plv8.execute(`
+        SELECT *
+        FROM inventory_request_schema.inventory_request_table
+        WHERE inventory_request_id = $1
+    `,[assetIdData.inventory_request_id])[0]
+
+
+CREATE OR REPLACE FUNCTION inventory_request_page_on_load(
+    input_data JSON
+)
+RETURNS JSON
+SET search_path TO ''
+AS $$
+    let returnData = null;
+    plv8.subtransaction(function() {
+        const { assetId, userId } = input_data;
+
+        // Fetch the request ID based on assetId
+        const assetIdData = plv8.execute(`
+            SELECT inventory_request_id
+            FROM inventory_request_schema.inventory_request_table
+            WHERE inventory_request_tag_id = $1
+        `, [assetId])[0];
+
+        // Create payload for another function call
+        const payload = JSON.stringify({
+            userId: userId,
+            formId: "656a3009-7127-4960-9738-92afc42779a6"
         });
-        const siteOptions = plv8.execute(`
-          SELECT site_id, site_name
-          FROM inventory_schema.site_table
-          WHERE site_team_id = '${teamId}'
-        `).map((site, index) => {
-          return {
-            option_field_id: form.form_section[2].section_field[0].field_id,
-            option_id: site.site_id,
-            option_order: index,
-            option_value: site.site_name,
-          };
-        });
-        returnData = {
-          form: {
-            ...form,
-            form_section: [
-              form.form_section[0],
-              {
-              ...form.form_section[1],
-              section_field:[
-                   {
-                    ...form.form_section[1].section_field[0],
-                    field_option: categoryOptions,
-                  },
-                ],
-              },
-              {
-                ...form.form_section[2],
-                section_field: [
+
+        // Fetch form data from external function
+        const formDataResult = plv8.execute(`
+            SELECT public.create_inventory_request_page_on_load($1)
+        `, [payload])[0].create_inventory_request_page_on_load.form;
+
+        // Fetch asset inventory data
+        const assetInventoryData = plv8.execute(`
+            SELECT *
+            FROM inventory_request_schema.inventory_request_table
+            WHERE inventory_request_id = $1
+        `, [assetIdData.inventory_request_id])[0];
+
+        // Populate form fields
+        const formData = {
+            form: {
+                ...formDataResult,
+                form_section: [
                     {
-                    ...form.form_section[2].section_field[0],
-                    field_option: siteOptions,
-                  },
-                 {
-                     ...form.form_section[2].section_field[1],
-                 },
-                  {
-                    ...form.form_section[2].section_field[2],
-                    field_option: departmentOptions,
-                  },
-
-                ],
-              },
-              form.form_section[3]
-            ],
-          },
-          departmentOptions
-        };
-        break;
-
-      case "Check In":
-        const checkInSiteOptions = plv8.execute(`
-          SELECT site_id, site_name
-          FROM inventory_schema.site_table
-        `).map((site, index) => {
-          return {
-            option_field_id: form.form_section[1]?.section_field[0]?.field_id,
-            option_id: site.site_id,
-            option_order: index,
-            option_value: site.site_name,
-          };
-        });
-
-        const checkInDepartmentOptions = plv8.execute(`
-          SELECT team_department_id, team_department_name
-          FROM team_schema.team_department_table
-        `).map((department, index) => {
-          return {
-            option_field_id: form.form_section[1]?.section_field[3]?.field_id,
-            option_id: department.team_department_id,
-            option_order: index,
-            option_value: department.team_department_name,
-          };
-        });
-          returnData = {
-          form: {
-            ...form,
-            form_section: [
-              form.form_section[0],
-            {
-              ...form.form_section[1],
-                section_field:[
-                  {
-                    ...form.form_section[1].section_field[0],
-                   },
-                   {
-                    ...form.form_section[1].section_field[1],
-                    field_option:checkInSiteOptions
-                   },
-                   {
-                    ...form.form_section[1].section_field[2],
-                   },
-                   {
-                    ...form.form_section[1].section_field[3],
-                    field_option:checkInDepartmentOptions
-                   },
-                  {
-                    ...form.form_section[2].section_field[4],
-                   },
-              ],
-            },
-            {
-             ...form.form_section[2],
-              section_field:[
-                  {
-                    ...form.form_section[2].section_field[0],
-                    field_option: checkInSiteOptions,
-                   },
-                   {
-                    ...form.form_section[2].section_field[1],
-                   },
-                   {
-                    ...form.form_section[2].section_field[2],
-                   },
-                   {
-                    ...form.form_section[2].section_field[3],
-                    field_option:checkInDepartmentOptions
-                   },
-                  {
-                    ...form.form_section[2].section_field[4],
-                   },
-              ],
+                        ...formDataResult.form_section[0],
+                        section_field: [
+                            {
+                                ...formDataResult.form_section[0].section_field[0],
+                                field_response: assetInventoryData.inventory_request_name,
+                                field_type:"TEXT",
+								field_is_read_only:true
+                            },
+                            {
+                                ...formDataResult.form_section[0].section_field[1],
+                                field_response: assetInventoryData.inventory_request_csi_code
+                            },
+                            {
+                                ...formDataResult.form_section[0].section_field[2],
+                                field_response: assetInventoryData.inventory_request_description
+                            },
+                            {
+                                ...formDataResult.form_section[0].section_field[3],
+                                field_response: assetInventoryData.inventory_request_brand
+                            },
+                            {
+                                ...formDataResult.form_section[0].section_field[4],
+                                field_response: assetInventoryData.inventory_request_model
+                            },
+                            {
+                                ...formDataResult.form_section[0].section_field[5],
+                                field_response: assetInventoryData.inventory_request_serial_number
+                            },
+                            {
+                                ...formDataResult.form_section[0].section_field[6],
+                                field_response: assetInventoryData.inventory_request_equipment_type
+                            },
+                            {
+                                ...formDataResult.form_section[0].section_field[7],
+                                field_response: assetInventoryData.inventory_request_old_asset_number
+                            }
+                        ]
+                    },
+                    {
+                        ...formDataResult.form_section[1],
+                        section_field: [
+                            {
+                                ...formDataResult.form_section[1].section_field[0],
+                                field_response: assetInventoryData.inventory_request_category
+                            }
+                        ]
+                    },
+                    {
+                        ...formDataResult.form_section[2],
+                        section_field: [
+                            {
+                                ...formDataResult.form_section[2].section_field[0],
+                                field_response: assetInventoryData.inventory_request_site
+                            },
+                            {
+                                ...formDataResult.form_section[2].section_field[1],
+                                field_response: assetInventoryData.inventory_request_location
+                            },
+                            {
+                                ...formDataResult.form_section[2].section_field[2],
+                                field_response: assetInventoryData.inventory_request_department
+                            }
+                        ]
+                    },
+                    {
+                        ...formDataResult.form_section[3],
+                        section_field: [
+                            {
+                                ...formDataResult.form_section[3].section_field[0],
+                                field_response: assetInventoryData.inventory_request_purchase_order
+                            },
+                            {
+                                ...formDataResult.form_section[3].section_field[1],
+                                field_response: assetInventoryData.inventory_request_purchase_date
+                            },
+                            {
+                                ...formDataResult.form_section[3].section_field[2],
+                                field_response: assetInventoryData.inventory_request_purchase_from
+                            },
+                            {
+                                ...formDataResult.form_section[3].section_field[3],
+                                field_response: parseInt(assetInventoryData.inventory_request_cost,10)
+                            },
+                            {
+                                ...formDataResult.form_section[3].section_field[4],
+                                field_response: assetInventoryData.inventory_request_si_number
+                            }
+                        ]
+                    }
+                ]
             }
-          ],
-          },
         };
-        break;
-
-      case "Check Out":
-        const checkOutSiteOptions = plv8.execute(`
-          SELECT site_id, site_name
-          FROM inventory_schema.site_table
-        `).map((site, index) => {
-          return {
-            option_field_id: form.form_section[1]?.section_field[0]?.field_id,
-            option_id: site.site_id,
-            option_order: index,
-            option_value: site.site_name,
-          };
-        });
-
-        const checkOutDepartmentOptions = plv8.execute(`
-          SELECT team_department_id, team_department_name
-          FROM team_schema.team_department_table
-        `).map((department, index) => {
-          return {
-            option_field_id: form.form_section[1]?.section_field[3]?.field_id,
-            option_id: department.team_department_id,
-            option_order: index,
-            option_value: department.team_department_name,
-          };
-        });
-          returnData = {
-          form: {
-            ...form,
-            form_section: [
-              form.form_section[0],
-            {
-              ...form.form_section[1],
-               section_field:[
-                  {
-                    ...form.form_section[1].section_field[0],
-                   },
-                   {
-                    ...form.form_section[1].section_field[1],
-                   },
-                   {
-                    ...form.form_section[1].section_field[2],
-                     field_option: checkOutSiteOptions,
-                   },
-                   {
-                    ...form.form_section[1].section_field[3],
-                   },
-                  {
-                    ...form.form_section[1].section_field[4],
-                     field_option:checkOutDepartmentOptions
-                  },
-                  {
-                    ...form.form_section[1].section_field[5],
-                  },
-              ],
-            },
-            {
-             ...form.form_section[2],
-              section_field:[
-                  {
-                    ...form.form_section[2].section_field[0],
-                    field_option: checkOutSiteOptions,
-                   },
-                   {
-                    ...form.form_section[2].section_field[1],
-                   },
-                   {
-                    ...form.form_section[2].section_field[2],
-                   },
-                   {
-                    ...form.form_section[2].section_field[3],
-                    field_option:checkOutDepartmentOptions
-                   },
-                  {
-                    ...form.form_section[2].section_field[4],
-                },
-              ],
-            }
-          ],
-          },
-        };
-        break;
-      default:
-        returnData = { form };
-    }
-  });
-  return returnData;
+        returnData = formData;
+    });
+    return returnData;
 $$ LANGUAGE plv8;
+
 
 CREATE OR REPLACE FUNCTION get_sub_field_options(
   input_data JSON
@@ -920,7 +859,8 @@ AS $$
       formId,
       teamMemberId,
       asset_name,
-      item_code,
+      csi_code,
+      description,
       brand,
       model,
       serial_number,
@@ -944,7 +884,7 @@ AS $$
         UPDATE inventory_request_schema.inventory_request_table
         SET
           inventory_request_name = $1,
-          inventory_request_item_code = $2,
+          inventory_request_csi_code = $2,
           inventory_request_brand = $3,
           inventory_request_model = $4,
           inventory_request_serial_number = $5,
@@ -960,14 +900,15 @@ AS $$
           inventory_request_si_number = $15,
           inventory_request_form_id = $16,
           inventory_request_created_by = $17,
-          inventory_request_old_asset_number = $18
-        WHERE inventory_request_id = $19
+          inventory_request_old_asset_number = $18,
+          inventory_request_description = $19
+        WHERE inventory_request_id = $20
         RETURNING *
       `,
       [
-        asset_name, item_code, brand, model, serial_number, equipment_type,
+        asset_name, csi_code, brand, model, serial_number, equipment_type,
         category, site, location, department, purchase_order, purchase_date,
-        purchase_form, cost, si_number, formId, teamMemberId, old_asset_number, assetId
+        purchase_form, cost, si_number, formId, teamMemberId, old_asset_number,description, assetId
       ]
     )[0];
 
@@ -1083,191 +1024,6 @@ AS $$
   return returnData;
 $$ LANGUAGE plv8;
 
-CREATE OR REPLACE FUNCTION get_asset_spreadsheet_view(
-    input_data JSON
-)
-RETURNS JSON
-SET search_path TO ''
-AS $$
-  let returnData = [];
-  let totalCount = 0;
-
-  plv8.subtransaction(function() {
-    const {
-      userId,
-      limit = 10,
-      page = 1,
-      sort,
-      search,
-      sites = [],
-      locations,
-      department = [],
-      category = [],
-      status,
-      assignedToPerson = [],
-      assignedToSite = []
-    } = input_data;
-
-    const sitesCondition = sites.length > 0 ? `AND r.inventory_request_site = ANY('{${sites.join(',')}}')` : "";
-    const locationCondition = locations ? `AND r.inventory_request_location = '${locations}'` : "";
-    const departmentCondition = department.length > 0 ? `AND r.inventory_request_department = ANY('{${department.join(',')}}')` : "";
-    const assignedToPersonCondition = assignedToPerson.length > 0 ? `AND assignee_t.team_member_id = ANY('{${assignedToPerson.join(',')}}')` : "";
-    const assignedToSiteCondition = assignedToSite.length > 0 ? `AND s.site_name= ANY('{${assignedToSite.join(',')}}')` : "";
-    const categoryCondition = category.length > 0 ? `AND r.inventory_request_category = ANY('{${category.join(',')}}')` : "";
-    const searchCondition = search ? `AND r.inventory_request_tag_id = '${search}'` : "";
-    const statusCondition = status ? `AND r.inventory_request_status = '${status}'` : "";
-
-    let sortDirection = sort ? 'ASC' : 'DESC';
-    let sortQuery = `ORDER BY r.inventory_request_created ${sortDirection}`;
-    const offset = (page - 1) * limit;
-
-    let rawResult = plv8.execute(`
-       SELECT
-        r.*,
-        a.inventory_assignee_asset_request_id,
-        a.inventory_assignee_site_id,
-        a.inventory_assignee_team_member_id,
-        s.site_name,
-        t.team_member_id AS request_creator_team_member_id,
-        u.user_id AS request_creator_user_id,
-        u.user_first_name AS request_creator_first_name,
-        u.user_last_name AS request_creator_last_name,
-        u.user_avatar AS request_creator_avatar,
-        assignee_t.team_member_id AS assignee_team_member_id,
-        assignee_u.user_id AS assignee_user_id,
-        assignee_u.user_first_name AS assignee_first_name,
-        assignee_u.user_last_name AS assignee_last_name,
-        e.event_color
-      FROM inventory_request_schema.inventory_request_table r
-      JOIN inventory_request_schema.inventory_assignee_table a
-      ON a.inventory_assignee_asset_request_id = r.inventory_request_id
-      LEFT JOIN inventory_schema.site_table s
-      ON s.site_id = a.inventory_assignee_site_id
-      LEFT JOIN team_schema.team_member_table t
-      ON t.team_member_id = r.inventory_request_created_by
-      JOIN user_schema.user_table u
-      ON u.user_id = t.team_member_user_id
-      LEFT JOIN team_schema.team_member_table assignee_t
-      ON assignee_t.team_member_id = a.inventory_assignee_team_member_id
-      LEFT JOIN user_schema.user_table assignee_u
-      ON assignee_u.user_id = assignee_t.team_member_user_id
-      INNER JOIN inventory_schema.inventory_event_table e
-      ON event_status = r.inventory_request_status
-      WHERE r.inventory_request_form_id = '656a3009-7127-4960-9738-92afc42779a6'
-      ${searchCondition}
-      ${sitesCondition}
-      ${locationCondition}
-      ${departmentCondition}
-      ${assignedToPersonCondition}
-      ${assignedToSiteCondition}
-      ${categoryCondition}
-      ${statusCondition}
-      ${sortQuery}
-      LIMIT ${limit} OFFSET ${offset}
-    `);
-
-    let requestMap = {};
-
-    rawResult.forEach(row => {
-
-      const notesResult = plv8.execute(`
-          SELECT *
-          FROM inventory_request_schema.inventory_event_table
-          WHERE inventory_event_request_id = '${row.inventory_request_id}'
-          ORDER BY inventory_event_date_created DESC
-          LIMIT 1
-      `)[0];
-
-      const customResponse = plv8.execute(`
-          SELECT f.field_name, cr.inventory_response_value
-          FROM inventory_request_schema.inventory_custom_response_table cr
-          JOIN inventory_schema.field_table f
-          ON f.field_id = cr.inventory_response_field_id
-          WHERE cr.inventory_response_asset_request_id = '${row.inventory_request_id}' AND f.field_is_disabled = False
-      `);
-
-      if (!requestMap[row.inventory_request_id]) {
-        requestMap[row.inventory_request_id] = {
-          inventory_request_id: row.inventory_request_id,
-          inventory_request_tag_id: row.inventory_request_tag_id,
-          inventory_request_name: row.inventory_request_name,
-          inventory_request_created: row.inventory_request_created,
-          inventory_request_item_code: row.inventory_request_item_code,
-          inventory_request_brand: row.inventory_request_brand,
-          inventory_request_model: row.inventory_request_model,
-          inventory_request_old_asset_number: row.inventory_request_old_asset_number,
-          inventory_request_equipment_type: row.inventory_request_equipment_type,
-          inventory_request_serial_number: row.inventory_request_serial_number,
-          inventory_request_si_number: row.inventory_request_si_number,
-          inventory_request_site: row.inventory_request_site,
-          inventory_request_location: row.inventory_request_location,
-          inventory_request_department: row.inventory_request_department,
-          inventory_request_category: row.inventory_request_category,
-          inventory_request_purchase_date: row.inventory_request_purchase_date,
-          inventory_request_purchase_order: row.inventory_request_purchase_order,
-          inventory_request_purchase_from: row.inventory_request_purchase_from,
-          inventory_request_cost: row.inventory_request_cost,
-          inventory_request_status: row.inventory_request_status,
-          inventory_request_status_color: row.event_color,
-          inventory_request_due_date: notesResult ? notesResult.inventory_event_due_date : null,
-          inventory_request_created_by: row.inventory_request_created_by,
-          inventory_assignee_asset_request_id: row.inventory_assignee_asset_request_id,
-          inventory_assignee_site_id: row.inventory_assignee_site_id,
-          inventory_assignee_team_member_id: row.inventory_assignee_team_member_id,
-          inventory_request_notes: notesResult ? notesResult.inventory_event_notes : null,
-          site_name: row.site_name,
-          request_creator_team_member_id: row.request_creator_team_member_id,
-          request_creator_user_id: row.request_creator_user_id,
-          request_creator_first_name: row.request_creator_first_name,
-          request_creator_last_name: row.request_creator_last_name,
-          request_creator_avatar: row.request_creator_avatar,
-          assignee_team_member_id: row.assignee_team_member_id,
-          assignee_user_id: row.assignee_user_id,
-          assignee_first_name: row.assignee_first_name,
-          assignee_last_name: row.assignee_last_name
-        };
-      }
-      customResponse.forEach(customField => {
-        requestMap[row.inventory_request_id][customField.field_name.toLowerCase()] = customField.inventory_response_value;
-      });
-    });
-
-    returnData = Object.values(requestMap);
-
-    totalCount = plv8.execute(`
-      SELECT COUNT(*) AS count
-      FROM inventory_request_schema.inventory_request_table r
-      JOIN inventory_request_schema.inventory_assignee_table a
-      ON a.inventory_assignee_asset_request_id = r.inventory_request_id
-      LEFT JOIN inventory_schema.site_table s
-      ON s.site_id = a.inventory_assignee_site_id
-      LEFT JOIN team_schema.team_member_table t
-      ON t.team_member_id = r.inventory_request_created_by
-      JOIN user_schema.user_table u
-      ON u.user_id = t.team_member_user_id
-      LEFT JOIN team_schema.team_member_table assignee_t
-      ON assignee_t.team_member_id = a.inventory_assignee_team_member_id
-      LEFT JOIN user_schema.user_table assignee_u
-      ON assignee_u.user_id = assignee_t.team_member_user_id
-      INNER JOIN inventory_schema.inventory_event_table e
-      ON event_status = r.inventory_request_status
-      WHERE r.inventory_request_form_id = '656a3009-7127-4960-9738-92afc42779a6'
-      ${searchCondition}
-      ${sitesCondition}
-      ${locationCondition}
-      ${departmentCondition}
-      ${assignedToPersonCondition}
-      ${assignedToSiteCondition}
-      ${categoryCondition}
-      ${statusCondition}
-    `)[0].count;
-  });
-  return {
-    data: returnData,
-    count: parseInt(totalCount)
-  };
-$$ LANGUAGE plv8;
-
 CREATE OR REPLACE FUNCTION get_column_fields()
 RETURNS JSON
 SET search_path TO ''
@@ -1297,7 +1053,8 @@ AS $$
     { label: "Asset Name", value: "inventory_request_name" },
     { label: "Status", value: "inventory_request_status" },
     { label: "Date Created", value: "inventory_request_created" },
-    { label: "Item Code", value: "inventory_request_item_code" },
+    { label: "CSI Code", value: "inventory_request_csi_code" },
+    { label: "Description", value: "inventory_request_description" },
     { label: "Brand", value: "inventory_request_brand" },
     { label: "Model", value: "inventory_request_model" },
     { label: "Old Asset Number", value: "inventory_request_old_asset_number" },
@@ -1312,7 +1069,7 @@ AS $$
     { label: "Purchase From", value: "inventory_request_purchase_from" },
     { label: "Cost", value: "inventory_request_cost" },
     { label: "SI No.", value: "inventory_request_si_number" },
-    { label: "Due Date", value: "inventory_request_due_date" }
+    { label: "Event Date", value: "inventory_event_date_created" }
   );
 
   return returnData;
@@ -2341,33 +2098,36 @@ RETURNS JSON
 SET search_path TO ''
 AS $$
     let returnData = null;
-    plv8.subtransaction(function() {
-        const { createEventFormvalues, teamMemberId, teamId } = input_data;
-        const eventDetails = createEventFormvalues.event;
-        const fieldDetails = createEventFormvalues.fields;
-        const assignedToDetails = createEventFormvalues.assignedTo;
 
-        const assignedToArray = [
-            assignedToDetails.assignToPerson && "Person",
-            assignedToDetails.assignToCustomer && "Customer",
-            assignedToDetails.assignToLocation && "Site"
-        ].filter(Boolean);
+    try {
+        plv8.subtransaction(function() {
+            const { createEventFormvalues, teamMemberId, teamId } = input_data;
+            const eventDetails = createEventFormvalues.event;
+            const fieldDetails = createEventFormvalues.fields;
+            const assignedToDetails = createEventFormvalues.assignedTo || {}; // Ensure this is defined
 
-        const eventData = plv8.execute(
-            `
-            INSERT INTO inventory_schema.inventory_event_table (
-                event_name,
-                event_description,
-                event_color,
-                event_is_disabled,
-                event_status,
-                event_created_by,
-                event_team_id
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING *
-            `,
-            [
+            const assignedToArray = [
+                assignedToDetails.assignToPerson && "Person",
+                assignedToDetails.assignToCustomer && "Customer",
+                assignedToDetails.assignToLocation && "Site"
+            ].filter(Boolean);
+
+            // Sanitize event name for table creation
+            const sanitizedEventName = eventDetails.eventName.toLowerCase().replace(/\s+/g, '_').replace(/[^\w]/g, '');
+
+            const eventData = plv8.execute(`
+                INSERT INTO inventory_schema.inventory_event_table (
+                    event_name,
+                    event_description,
+                    event_color,
+                    event_is_disabled,
+                    event_status,
+                    event_created_by,
+                    event_team_id
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                RETURNING event_id
+            `, [
                 eventDetails.eventName,
                 eventDetails.eventDescription,
                 eventDetails.eventColor,
@@ -2375,228 +2135,122 @@ AS $$
                 eventDetails.eventStatus,
                 teamMemberId,
                 teamId
-            ]
-        )[0].event_id
+            ])[0].event_id;
 
-        const formData = plv8.execute(
-            `
-            INSERT INTO inventory_schema.inventory_form_table (
-                form_name,
-                form_description,
-                form_is_disabled,
-                form_team_member_id
-            )
-            VALUES ($1, $2, $3, $4)
-            RETURNING *
-            `,
-            [
+            const formData = plv8.execute(`
+                INSERT INTO inventory_schema.inventory_form_table (
+                    form_name,
+                    form_description,
+                    form_is_disabled,
+                    form_team_member_id
+                )
+                VALUES ($1, $2, $3, $4)
+                RETURNING form_id
+            `, [
                 eventDetails.eventName,
                 eventDetails.eventDescription,
                 eventDetails.enableEvent,
                 teamMemberId
-            ]
-        )[0].form_id;
+            ])[0].form_id;
 
-        if (eventData && formData) {
-            plv8.execute(
-                `
-                INSERT INTO inventory_schema.event_form_connection_table (
-                    event_form_event_id,
-                    event_form_form_id
-                )
-                VALUES ($1, $2)
-                `,
-                [eventData, formData]
-            );
-
-            const sectionData = plv8.execute(
-                `
-                INSERT INTO inventory_schema.section_table (
-                    section_name,
-                    section_order,
-                    section_form_id
-                )
-                VALUES ($1, $2, $3)
-                RETURNING *
-                `,
-                [eventDetails.eventName + " Section", 1,formData]
-            )[0].section_id;
-
-            fieldDetails.forEach((field, index) => {
-                const fieldData = plv8.execute(
-                    `
-                    INSERT INTO inventory_schema.field_table (
-                        field_name,
-                        field_is_required,
-                        field_type,
-                        field_order,
-                        field_section_id
+            if (eventData && formData) {
+                plv8.execute(`
+                    INSERT INTO inventory_schema.event_form_connection_table (
+                        event_form_event_id,
+                        event_form_form_id
                     )
-                    VALUES ($1, $2, $3, $4, $5)
-                    RETURNING *
-                    `,
-                    [
+                    VALUES ($1, $2)
+                `, [eventData, formData]);
+
+                const sectionData = plv8.execute(`
+                    INSERT INTO inventory_schema.section_table (
+                        section_name,
+                        section_order,
+                        section_form_id
+                    )
+                    VALUES ($1, $2, $3)
+                    RETURNING section_id
+                `, [eventDetails.eventName + " Section", 1, formData])[0].section_id;
+
+                let tableName = `event_${sanitizedEventName}_table`;
+                let createTableSQL = `CREATE TABLE event_schema.${tableName} (event_${sanitizedEventName}_id UUID PRIMARY KEY DEFAULT gen_random_uuid(), `;
+
+                let requiredFields = fieldDetails.filter(field => field.field_is_required);
+
+                requiredFields.forEach((field, index) => {
+                    let fieldTypeSQL = '';
+
+                    switch (field.field_type) {
+                        case 'TEXT':
+                        case 'TEXTAREA':
+                            fieldTypeSQL = 'VARCHAR(4000) NOT NULL';
+                            break;
+                        case 'NUMBER':
+                            fieldTypeSQL = 'INT NOT NULL';
+                            break;
+                        case 'CHECKBOX':
+                            fieldTypeSQL = 'BOOLEAN NOT NULL';
+                            break;
+                        case 'DATE':
+                            fieldTypeSQL = 'TIMESTAMPTZ DEFAULT NOW()';
+                            break;
+                        default:
+                            fieldTypeSQL = 'VARCHAR(4000) NOT NULL';
+                    }
+
+                    let sanitizedFieldLabel = field.field_label.toLowerCase().replace(/\s+/g, '_').replace(/[^\w]/g, '');
+
+                    createTableSQL += `event_${sanitizedEventName}_${sanitizedFieldLabel} ${fieldTypeSQL}${index < requiredFields.length - 1 ? ', ' : ''}`;
+                });
+
+                createTableSQL += `);`;
+
+                // Execute table creation SQL
+                plv8.execute(createTableSQL);
+
+                // Insert fields and options into respective tables
+                fieldDetails.forEach((field, index) => {
+                    const fieldData = plv8.execute(`
+                        INSERT INTO inventory_schema.field_table (
+                            field_name,
+                            field_is_required,
+                            field_type,
+                            field_order,
+                            field_section_id
+                        )
+                        VALUES ($1, $2, $3, $4, $5)
+                        RETURNING field_id
+                    `, [
                         field.field_label,
                         field.field_is_required,
                         field.field_type,
                         index + 1,
                         sectionData
-                    ]
-                )[0].field_id;
+                    ])[0].field_id;
 
-                if (field.field_name === "Assigned To") {
-                    assignedToArray.forEach((option, optionIndex) => {
-                        plv8.execute(`
-                            INSERT INTO inventory_schema.option_table (
-                                option_value,
-                                option_order,
-                                option_field_id
-                            )
-                            VALUES ($1, $2, $3)
-                        `, [option, optionIndex + 1, fieldData]);
-                    });
-                }
-            });
-        }
-    });
-    return returnData;
-$$ LANGUAGE plv8;
-
-
-CREATE OR REPLACE FUNCTION edit_custom_event_on_Load(
-    input_data JSON
-)
-RETURNS JSON
-SET search_path TO ''
-AS $$
-    let returnData = {
-        event: {},
-        fields: [],
-        assignedTo: {}
-    };
-
-    plv8.subtransaction(function() {
-        const { eventId } = input_data;
-        const predefinedFields = [
-            {
-                field_name: "Date 1",
-                field_type: "DATE",
-                field_label: "Due date",
-                field_is_required: false,
-                field_is_included: false,
-            },
-            {
-                field_name: "Text field",
-                field_type: "TEXT",
-                field_label: "Text field",
-                field_is_required: false,
-                field_is_included: false,
-            },
-            {
-                field_name: "Currency",
-                field_type: "NUMBER",
-                field_label: "Amount",
-                field_is_required: false,
-                field_is_included: false,
-            },
-            {
-                field_name: "Boolean",
-                field_type: "CHECKBOX",
-                field_label: "Question",
-                field_is_required: false,
-                field_is_included: false,
-            },
-            {
-                field_name: "Notes",
-                field_type: "TEXTAREA",
-                field_label: "Notes",
-                field_is_required: false,
-                field_is_included: false,
-            }
-        ];
-
-        const eventConnection = plv8.execute(`
-            SELECT *
-            FROM inventory_schema.event_form_connection_table
-            WHERE event_form_event_id = $1
-        `, [eventId])[0];
-
-        const eventData = plv8.execute(`
-            SELECT *
-            FROM inventory_schema.inventory_event_table
-            WHERE event_id = $1
-        `, [eventId])[0];
-
-        const getEventSection = plv8.execute(`
-            SELECT *
-            FROM inventory_schema.section_table
-            WHERE section_form_id = $1
-        `, [eventConnection.event_form_form_id]);
-
-        getEventSection.forEach((section) => {
-            const fieldData = plv8.execute(`
-                SELECT *
-                FROM inventory_schema.field_table
-                WHERE field_section_id = $1
-            `, [section.section_id]);
-
-            returnData.event = {
-                eventName: eventData.event_name,
-                eventColor: eventData.event_color,
-                eventStatus: eventData.event_status,
-                eventDescription: eventData.event_description,
-                enableEvent: eventData.event_is_disabled ? true : false
-            };
-
-
-            if (eventData.event_is_custom_event === true) {
-                predefinedFields.forEach(predefinedField => {
-                    const matchingField = fieldData.find(field => field.field_type === predefinedField.field_type);
-                    if (matchingField) {
-                        predefinedField.field_name = matchingField.field_name;
-                        predefinedField.field_label = matchingField.field_name || predefinedField.field_name;
-                        predefinedField.field_is_required = matchingField.field_is_required;
-                        predefinedField.field_is_included = true;
+                    if (field.field_name === "Assigned To") {
+                        assignedToArray.forEach((option, optionIndex) => {
+                            plv8.execute(`
+                                INSERT INTO inventory_schema.option_table (
+                                    option_value,
+                                    option_order,
+                                    option_field_id
+                                )
+                                VALUES ($1, $2, $3)
+                            `, [option, optionIndex + 1, fieldData]);
+                        });
                     }
                 });
-            }
-
-            // Non-predefined fields excluding "Assigned To"
-            const nonPredefinedFields = fieldData
-                .filter(field => field.field_name !== "Assigned To")
-                .map(field => ({
-                    field_name: field.field_name,
-                    field_type: field.field_type,
-                    field_label: field.field_name || "",
-                    field_is_required: field.field_is_required,
-                    field_is_included: true
-                }));
-            returnData.fields = eventData.event_is_custom_event === true
-                ? returnData.fields.concat(predefinedFields, nonPredefinedFields)
-                : returnData.fields.concat(nonPredefinedFields);
-
-            // Handle "Assigned To" field separately
-            const assignedToField = fieldData.find(field => field.field_name === "Assigned To");
-            if (assignedToField) {
-                const options = plv8.execute(`
-                    SELECT option_value
-                    FROM inventory_schema.option_table
-                    WHERE option_field_id = $1
-                `, [assignedToField.field_id]);
-
-                returnData.assignedTo = {
-                    assignToPerson: options.some(opt => opt.option_value === 'Person'),
-                    assignToCustomer: options.some(opt => opt.option_value === 'Customer'),
-                    assignToSite: options.some(opt => opt.option_value === 'Site')
-                };
             }
         });
-    });
-
+    } catch (err) {
+        plv8.elog(ERROR, `Error creating event: ${err.message}`);
+        throw err;
+    }
     return returnData;
 $$ LANGUAGE plv8;
 
-CREATE OR REPLACE FUNCTION edit_custom_event_on_Load(
+CREATE OR REPLACE FUNCTION edit_custom_event_on_load(
     input_data JSON
 )
 RETURNS JSON
@@ -2605,49 +2259,23 @@ AS $$
     let returnData = {
         event: {},
         fields: [],
-        assignedTo: {}
+        assignedTo: {
+            assignToPerson: false,
+            assignToCustomer: false,
+            assignToSite: false
+        }
     };
-
     plv8.subtransaction(function() {
         const { eventId } = input_data;
         const predefinedFields = [
-            {
-                field_name: "Date 1",
-                field_type: "DATE",
-                field_label: "Due date",
-                field_is_required: false,
-                field_is_included: false,
-            },
-            {
-                field_name: "Text field",
-                field_type: "TEXT",
-                field_label: "Text field",
-                field_is_required: false,
-                field_is_included: false,
-            },
-            {
-                field_name: "Currency",
-                field_type: "NUMBER",
-                field_label: "Amount",
-                field_is_required: false,
-                field_is_included: false,
-            },
-            {
-                field_name: "Boolean",
-                field_type: "CHECKBOX",
-                field_label: "Question",
-                field_is_required: false,
-                field_is_included: false,
-            },
-            {
-                field_name: "Notes",
-                field_type: "TEXTAREA",
-                field_label: "Notes",
-                field_is_required: false,
-                field_is_included: false,
-            }
+            { field_name: "Date 1", field_type: "DATE", field_label: "Due date", field_is_required: false, field_is_included: false },
+            { field_name: "Text field", field_type: "TEXT", field_label: "Text field", field_is_required: false, field_is_included: false },
+            { field_name: "Currency", field_type: "NUMBER", field_label: "Amount", field_is_required: false, field_is_included: false },
+            { field_name: "Boolean", field_type: "CHECKBOX", field_label: "Question", field_is_required: false, field_is_included: false },
+            { field_name: "Notes", field_type: "TEXTAREA", field_label: "Notes", field_is_required: false, field_is_included: false }
         ];
 
+        // Fetch event and connection data
         const eventConnection = plv8.execute(`
             SELECT *
             FROM inventory_schema.event_form_connection_table
@@ -2664,52 +2292,50 @@ AS $$
             SELECT *
             FROM inventory_schema.section_table
             WHERE section_form_id = $1
+            ORDER BY section_order ASC
         `, [eventConnection.event_form_form_id]);
+
+
+        const excludedFieldNames = ["Site", "Location", "Department", "Assigned To", "Customer"];
 
         getEventSection.forEach((section) => {
             const fieldData = plv8.execute(`
                 SELECT *
                 FROM inventory_schema.field_table
                 WHERE field_section_id = $1
+                ORDER BY field_order ASC
             `, [section.section_id]);
+
 
             returnData.event = {
                 eventName: eventData.event_name,
                 eventColor: eventData.event_color,
                 eventStatus: eventData.event_status,
                 eventDescription: eventData.event_description,
-                enableEvent: eventData.event_is_disabled ? true : false
+                enableEvent: eventData.event_is_disabled ? false : true
             };
 
-
-            if (eventData.event_is_custom_event === true) {
-                predefinedFields.forEach(predefinedField => {
-                    const matchingField = fieldData.find(field => field.field_type === predefinedField.field_type);
-                    if (matchingField) {
-                        predefinedField.field_name = matchingField.field_name;
-                        predefinedField.field_label = matchingField.field_name || predefinedField.field_name;
-                        predefinedField.field_is_required = matchingField.field_is_required;
-                        predefinedField.field_is_included = true;
-                    }
-                });
-            }
-
-            // Non-predefined fields excluding "Assigned To"
+            // Filter out predefined fields that don't match existing fields
+            const nonMatchingPredefinedFields = predefinedFields.filter(predefinedField =>
+                !fieldData.some(field => field.field_type === predefinedField.field_type)
+            );
             const nonPredefinedFields = fieldData
-                .filter(field => field.field_name !== "Assigned To")
+                .filter(field => !excludedFieldNames.includes(field.field_name) && field.field_name !== "Appointed To")
                 .map(field => ({
+                    field_id: field.field_id,
                     field_name: field.field_name,
                     field_type: field.field_type,
                     field_label: field.field_name || "",
                     field_is_required: field.field_is_required,
-                    field_is_included: true
+                    field_is_included: field.field_is_disabled ? false : true
                 }));
-            returnData.fields = eventData.event_is_custom_event === true
-                ? returnData.fields.concat(predefinedFields, nonPredefinedFields)
-                : returnData.fields.concat(nonPredefinedFields);
 
-            // Handle "Assigned To" field separately
-            const assignedToField = fieldData.find(field => field.field_name === "Assigned To");
+            // Combine non-predefined and predefined fields
+            const uniqueFields = [...nonPredefinedFields, ...nonMatchingPredefinedFields];
+            returnData.fields = returnData.fields.concat(uniqueFields);
+
+            // Handling "Appointed To" field
+            const assignedToField = fieldData.find(field => field.field_name === "Appointed To");
             if (assignedToField) {
                 const options = plv8.execute(`
                     SELECT option_value
@@ -2735,8 +2361,8 @@ CREATE OR REPLACE FUNCTION event_status_update(
 RETURNS JSON
 SET search_path TO ''
 AS $$
-let returnData = [];
-plv8.subtransaction(function() {
+ let returnData = [];
+ plv8.subtransaction(function() {
     const { fieldResponse, selectedRow, teamMemberId, type, signatureUrl, eventId } = input_data;
     const currentDate = new Date(plv8.execute(`SELECT public.get_current_date()`)[0].get_current_date);
     let listOfAssets = [];
@@ -2773,17 +2399,18 @@ plv8.subtransaction(function() {
         });
     }
 
-    const from = fieldResponse.find(f => f.name === "Check out to" || "Assigned To")?.response || null;
+    const from = fieldResponse.find(f => f.name === "Check out to" || "Assigned To" || "Appointed To")?.response || null;
     const date1 = fieldResponse.find(f => f.name === "Date 1")?.response ?
       new Date(fieldResponse.find(f => f.name === "Date 1").response).toISOString() : currentDate.toISOString();
     const site = fieldResponse.find(f => f.name === "Site")?.response || null;
+    const customer = fieldResponse.find(f => f.name === "Customer")?.response || null;
     const department = fieldResponse.find(f => f.name === "Department")?.response || null;
     const location = fieldResponse.find(f => f.name === "Location")?.response || null;
-    const person = fieldResponse.find(f => f.name === "Assign To")?.response || null;
-    const notes = fieldResponse.find(f => f.name === "Notes")?.response || null;
+    const person = fieldResponse.find(f => f.name === "Assigned To")?.response || null;
 
     let personTeamMemberId = null;
     if (from === "Person") {
+        if(person === null) return;
         const [firstName, lastName] = person.split(' ');
         if (firstName && lastName) {
             const result = plv8.execute(`
@@ -2807,6 +2434,16 @@ plv8.subtransaction(function() {
         `, [site]);
 
         siteID = siteResult[0]?.site_id || null;
+    }
+    let customerID = null;
+    if (from === "Customer") {
+        const customerResult = plv8.execute(`
+            SELECT customer_id
+            FROM inventory_schema.customer_table
+            WHERE customer_name ILIKE '%' || $1 || '%'
+        `, [customer]);
+
+        customerID = customerResult[0]?.customer_id || null;
     }
 
         listOfAssets.forEach(function(requestId) {
@@ -2833,9 +2470,10 @@ plv8.subtransaction(function() {
                 UPDATE inventory_request_schema.inventory_assignee_table
                 SET
                     inventory_assignee_team_member_id = $1,
-                    inventory_assignee_site_id = $2
-                    WHERE inventory_assignee_asset_request_id = $3;
-            `, [eventData.event_status === "AVAILABLE" ? null : personTeamMemberId, eventData.event_status === "AVAILABLE" ? null : siteID, requestId]);
+                    inventory_assignee_site_id = $2,
+                    inventory_assignee_customer_id = $3
+                    WHERE inventory_assignee_asset_request_id = $4;
+            `, [eventData.event_status === "AVAILABLE" ? null : personTeamMemberId, eventData.event_status === "AVAILABLE" ? null : siteID, eventData.event_status === "AVAILABLE" ? null : customerID , requestId]);
 
             plv8.execute(`
                 INSERT INTO inventory_request_schema.inventory_history_table (
@@ -2852,25 +2490,12 @@ plv8.subtransaction(function() {
                 eventData.event_status,
                 currentStatus,
                 requestId,
-                siteID ? site : personTeamMemberId ? personTeamMemberId : person || null,
+                siteID ? site :
+                personTeamMemberId ? personTeamMemberId :
+                person ? person :
+                CustomerID ? customerID :
+                null,
                 teamMemberId
-            ]);
-
-            plv8.execute(`
-                INSERT INTO inventory_request_schema.inventory_event_table (
-                    inventory_event,
-                    inventory_event_date_created,
-                    inventory_event_notes,
-                    inventory_event_request_id,
-                    inventory_event_signature
-                )
-                VALUES ($1, $2, $3, $4, $5);
-            `, [
-                eventData.event_name,
-                date1,
-                notes,
-                requestId,
-                signatureUrl
             ]);
 
             const formattedType = eventData.event_name.toLowerCase().replace(/\s+/g, '_');
@@ -2927,7 +2552,763 @@ plv8.subtransaction(function() {
            }
         });
     });
-return returnData;
+ return returnData;
+$$ LANGUAGE plv8;
+
+CREATE OR REPLACE FUNCTION create_custom_event(
+    input_data JSON
+)
+RETURNS JSON
+SET search_path TO ''
+AS $$
+    let returnData = null;
+        plv8.subtransaction(function() {
+            const { createEventFormvalues, teamMemberId, teamId } = input_data;
+            const eventDetails = createEventFormvalues.event;
+            const fieldDetails = createEventFormvalues.fields;
+            const assignedToDetails = createEventFormvalues.assignedTo || {};
+
+            const assignedToArray = [
+                assignedToDetails.assignToPerson && "Person",
+                assignedToDetails.assignToCustomer && "Customer",
+                assignedToDetails.assignToSite && "Site"
+            ].filter(Boolean);
+
+            const sanitizedEventName = eventDetails.eventName.toLowerCase().replace(/\s+/g, '_').replace(/[^\w]/g, '');
+
+            const eventData = plv8.execute(`
+                INSERT INTO inventory_schema.inventory_event_table (
+                    event_name,
+                    event_description,
+                    event_color,
+                    event_is_disabled,
+                    event_status,
+                    event_created_by,
+                    event_team_id
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                RETURNING event_id
+            `, [
+                eventDetails.eventName,
+                eventDetails.eventDescription,
+                eventDetails.eventColor,
+                eventDetails.enableEvent ? false : true,
+                eventDetails.eventStatus,
+                teamMemberId,
+                teamId
+            ])[0].event_id;
+
+            const formData = plv8.execute(`
+                INSERT INTO inventory_schema.inventory_form_table (
+                    form_name,
+                    form_description,
+                    form_is_disabled,
+                    form_team_member_id
+                )
+                VALUES ($1, $2, $3, $4)
+                RETURNING form_id
+            `, [
+                eventDetails.eventName,
+                eventDetails.eventDescription,
+                eventDetails.enableEvent,
+                teamMemberId
+            ])[0].form_id;
+
+            if (eventData && formData) {
+                plv8.execute(`
+                    INSERT INTO inventory_schema.event_form_connection_table (
+                        event_form_event_id,
+                        event_form_form_id
+                    )
+                    VALUES ($1, $2)
+                `, [eventData, formData]);
+
+                const sectionData = plv8.execute(`
+                    INSERT INTO inventory_schema.section_table (
+                        section_name,
+                        section_order,
+                        section_form_id
+                    )
+                    VALUES ($1, $2, $3)
+                    RETURNING section_id
+                `, [eventDetails.eventName + " Section", 1, formData])[0].section_id;
+
+                // Create table name
+                let tableName = `event_${sanitizedEventName}_table`;
+                let createTableSQL = `
+                CREATE TABLE event_schema.${tableName} (
+                    event_${sanitizedEventName}_id UUID PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+                    event_${sanitizedEventName}_date_created TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+                    event_${sanitizedEventName}_request_id UUID NOT NULL REFERENCES inventory_request_schema.inventory_request_table(inventory_request_id) NOT NULL,
+            `;
+                fieldDetails.forEach((field, index) => {
+                    let fieldTypeSQL = '';
+                    switch (field.field_type) {
+                        case 'TEXT':
+                        case 'TEXTAREA':
+                            fieldTypeSQL = 'VARCHAR(4000)';
+                            break;
+                        case 'NUMBER':
+                            fieldTypeSQL = 'INT';
+                            break;
+                        case 'CHECKBOX':
+                            fieldTypeSQL = 'BOOLEAN';
+                            break;
+                        case 'DATE':
+                            fieldTypeSQL = 'TIMESTAMPTZ DEFAULT NOW()';
+                            break;
+                        default:
+                            fieldTypeSQL = 'VARCHAR(4000)';
+                    }
+
+                    let sanitizedFieldLabel = field.field_label.toLowerCase().replace(/\s+/g, '_').replace(/[^\w]/g, '');
+
+                    createTableSQL += `event_${sanitizedEventName}_${sanitizedFieldLabel} ${fieldTypeSQL}${index < fieldDetails.length - 1 ? ', ' : ''}`;
+                });
+
+                createTableSQL += `);`;
+                plv8.execute(createTableSQL);
+                fieldDetails.forEach((field, index) => {
+                    const fieldData = plv8.execute(`
+                        INSERT INTO inventory_schema.field_table (
+                            field_name,
+                            field_is_required,
+                            field_type,
+                            field_order,
+                            field_section_id
+                        )
+                        VALUES ($1, $2, $3, $4, $5)
+                        RETURNING field_id
+                    `, [
+                        field.field_label,
+                        field.field_is_required,
+                        field.field_type,
+                        index + 1,
+                        sectionData
+                    ])[0].field_id;
+
+                    if (field.field_name === "Appointed To") {
+                        assignedToArray.forEach((option, optionIndex) => {
+                            plv8.execute(`
+                                INSERT INTO inventory_schema.option_table (
+                                    option_value,
+                                    option_order,
+                                    option_field_id
+                                )
+                                VALUES ($1, $2, $3)
+                            `, [option, optionIndex + 1, fieldData]);
+                        });
+                    }
+                });
+            }
+        });
+    return returnData;
+$$ LANGUAGE plv8;
+
+CREATE OR REPLACE FUNCTION get_event_history_by_request(
+    input_data JSON
+)
+RETURNS JSON
+SET search_path TO ''
+AS $$
+  let returnData = [];
+  let allData = [];
+  let count = 0;
+
+  plv8.subtransaction(function() {
+    const { assetID, page, limit, teamID } = input_data;
+    const offset = (page - 1) * limit;
+
+    const eventRequestData = plv8.execute(`
+      SELECT event_name
+      FROM inventory_schema.inventory_event_table
+      WHERE event_team_id = $1
+    `, [teamID]);
+
+    const eventTables = eventRequestData.map(event => {
+      return 'event_' + event.event_name.toLowerCase().replace(/ /g, '_') + '_table';
+    });
+
+    eventTables.forEach(eventTable => {
+      const eventData = plv8.execute(`
+        SELECT *
+        FROM event_schema.${eventTable}
+        WHERE ${eventTable.replace('_table', '')}_request_id = $1
+        ORDER BY ${eventTable.replace('_table', '')}_date_created DESC
+      `, [assetID]);
+
+      eventData.forEach(row => {
+        const {
+          [`${eventTable.replace('_table', '')}_id`]: event_id,
+          [`${eventTable.replace('_table', '')}_signature`]: event_signature,
+          [`${eventTable.replace('_table', '')}_request_id`]: event_request_id,
+          [`${eventTable.replace('_table', '')}_date_created`]: event_date_created,
+          ...filteredRow
+        } = row;
+
+        const cleanedRow = Object.keys(filteredRow).reduce((acc, key) => {
+          if (filteredRow[key] != null) {
+            acc[key] = filteredRow[key];
+          }
+          return acc;
+        }, {});
+
+        allData.push({
+          event_id,
+          event_name: eventTable
+            .replace('event_', '')
+            .replace('_table', '')
+            .replace(/_/g, ' ')
+            .toUpperCase(),
+          event_date_created,
+          event_signature,
+          ...cleanedRow
+        });
+      });
+    });
+
+
+    allData.sort((a, b) => new Date(b.event_date_created) - new Date(a.event_date_created));
+
+
+    const paginatedData = allData.slice(offset, offset + limit);
+
+    count = allData.length;
+
+    returnData = paginatedData;
+  });
+
+  return {
+    data: returnData,
+    totalCount: count,
+  };
+$$ LANGUAGE plv8;
+
+CREATE OR REPLACE FUNCTION get_asset_spreadsheet_view(
+    input_data JSON
+)
+RETURNS JSON
+SET search_path TO ''
+AS $$
+
+  let returnData = [];
+  let totalCount = 0;
+
+  plv8.subtransaction(function() {
+    const {
+      userId,
+	  teamId,
+      limit = 10,
+      page = 1,
+      sort,
+      search,
+      sites = [],
+      locations,
+      department = [],
+      category = [],
+      status,
+      assignedToPerson = [],
+      assignedToSite = []
+    } = input_data;
+
+    const sitesCondition = sites.length > 0 ? `AND r.inventory_request_site = ANY('{${sites.join(',')}}')` : "";
+    const locationCondition = locations ? `AND r.inventory_request_location = '${locations}'` : "";
+    const departmentCondition = department.length > 0 ? `AND r.inventory_request_department = ANY('{${department.join(',')}}')` : "";
+    const assignedToPersonCondition = assignedToPerson.length > 0 ? `AND assignee_t.team_member_id = ANY('{${assignedToPerson.join(',')}}')` : "";
+    const assignedToSiteCondition = assignedToSite.length > 0 ? `AND s.site_name= ANY('{${assignedToSite.join(',')}}')` : "";
+    const categoryCondition = category.length > 0 ? `AND r.inventory_request_category = ANY('{${category.join(',')}}')` : "";
+    const searchCondition = search ? `AND r.inventory_request_tag_id = '${search}'` : "";
+    const statusCondition = status ? `AND r.inventory_request_status = '${status}'` : "";
+
+    let sortDirection = sort ? 'ASC' : 'DESC';
+    let sortQuery = `ORDER BY r.inventory_request_created ${sortDirection}`;
+    const offset = (page - 1) * limit;
+
+    let rawResult = plv8.execute(`
+       SELECT
+        r.*,
+        a.inventory_assignee_asset_request_id,
+        a.inventory_assignee_site_id,
+        a.inventory_assignee_team_member_id,
+        s.site_name,
+        c.customer_name,
+        t.team_member_id AS request_creator_team_member_id,
+        u.user_id AS request_creator_user_id,
+        u.user_first_name AS request_creator_first_name,
+        u.user_last_name AS request_creator_last_name,
+        u.user_avatar AS request_creator_avatar,
+        assignee_t.team_member_id AS assignee_team_member_id,
+        assignee_u.user_id AS assignee_user_id,
+        assignee_u.user_first_name AS assignee_first_name,
+        assignee_u.user_last_name AS assignee_last_name,
+        e.event_color
+      FROM inventory_request_schema.inventory_request_table r
+      JOIN inventory_request_schema.inventory_assignee_table a
+      ON a.inventory_assignee_asset_request_id = r.inventory_request_id
+      LEFT JOIN inventory_schema.site_table s
+      ON s.site_id = a.inventory_assignee_site_id
+      LEFT JOIN inventory_schema.customer_table c
+      ON c.customer_id = a.inventory_assignee_customer_id
+      LEFT JOIN team_schema.team_member_table t
+      ON t.team_member_id = r.inventory_request_created_by
+      JOIN user_schema.user_table u
+      ON u.user_id = t.team_member_user_id
+      LEFT JOIN team_schema.team_member_table assignee_t
+      ON assignee_t.team_member_id = a.inventory_assignee_team_member_id
+      LEFT JOIN user_schema.user_table assignee_u
+      ON assignee_u.user_id = assignee_t.team_member_user_id
+      INNER JOIN inventory_schema.inventory_event_table e
+      ON event_status = r.inventory_request_status
+      WHERE r.inventory_request_form_id = '656a3009-7127-4960-9738-92afc42779a6'
+      ${searchCondition}
+      ${sitesCondition}
+      ${locationCondition}
+      ${departmentCondition}
+      ${assignedToPersonCondition}
+      ${assignedToSiteCondition}
+      ${categoryCondition}
+      ${statusCondition}
+      ${sortQuery}
+      LIMIT ${limit} OFFSET ${offset}
+    `);
+
+    const eventRequestData = plv8.execute(`
+      SELECT event_name
+      FROM inventory_schema.inventory_event_table
+      WHERE event_team_id = $1
+    `, [teamId]);
+
+    const eventTables = eventRequestData.map(event => {
+      return 'event_' + event.event_name.toLowerCase().replace(/ /g, '_') + '_table';
+    });
+
+
+
+    let requestMap = {};
+	let listOfLatestDate = {}
+    let latestNotes = null;
+    let dateCreated = null;
+
+    rawResult.forEach(row => {
+      eventTables.forEach(eventTable => {
+        const notesResult = plv8.execute(`
+          SELECT
+            ${eventTable.replace('_table', '')}_notes AS notes,
+            ${eventTable.replace('_table', '')}_date_created AS date_created
+          FROM event_schema.${eventTable}
+          WHERE ${eventTable.replace('_table', '')}_request_id = '${row.inventory_request_id}'
+          ORDER BY ${eventTable.replace('_table', '')}_date_created DESC
+          LIMIT 1
+        `);
+
+       if (notesResult.length > 0 && notesResult[0].notes) {
+        const currentDate = new Date(notesResult[0].date_created);
+        if (!dateCreated || currentDate > dateCreated) {
+        latestNotes = notesResult[0].notes;
+        dateCreated = currentDate;
+         }
+        }
+      });
+
+      const customResponse = plv8.execute(`
+          SELECT f.field_name, cr.inventory_response_value
+          FROM inventory_request_schema.inventory_custom_response_table cr
+          JOIN inventory_schema.field_table f
+          ON f.field_id = cr.inventory_response_field_id
+          WHERE cr.inventory_response_asset_request_id = '${row.inventory_request_id}' AND f.field_is_disabled = False
+      `);
+
+      if (!requestMap[row.inventory_request_id]) {
+        requestMap[row.inventory_request_id] = {
+          inventory_request_id: row.inventory_request_id,
+          inventory_request_tag_id: row.inventory_request_tag_id,
+          inventory_request_name: row.inventory_request_name,
+          inventory_request_created: row.inventory_request_created,
+          inventory_request_csi_code: row.inventory_request_csi_code,
+          inventory_request_description: row.inventory_request_description,
+          inventory_request_brand: row.inventory_request_brand,
+          inventory_request_model: row.inventory_request_model,
+          inventory_request_old_asset_number: row.inventory_request_old_asset_number,
+          inventory_request_equipment_type: row.inventory_request_equipment_type,
+          inventory_request_serial_number: row.inventory_request_serial_number,
+          inventory_request_si_number: row.inventory_request_si_number,
+          inventory_request_site: row.inventory_request_site,
+          inventory_request_location: row.inventory_request_location,
+          inventory_request_department: row.inventory_request_department,
+          inventory_request_category: row.inventory_request_category,
+          inventory_request_purchase_date: row.inventory_request_purchase_date,
+          inventory_request_purchase_order: row.inventory_request_purchase_order,
+          inventory_request_purchase_from: row.inventory_request_purchase_from,
+          inventory_request_cost: row.inventory_request_cost,
+          inventory_request_status: row.inventory_request_status,
+          inventory_request_status_color: row.event_color,
+          inventory_request_created_by: row.inventory_request_created_by,
+          inventory_assignee_asset_request_id: row.inventory_assignee_asset_request_id,
+          inventory_assignee_site_id: row.inventory_assignee_site_id,
+          inventory_assignee_team_member_id: row.inventory_assignee_team_member_id,
+          inventory_request_notes: latestNotes,
+          inventory_event_date_created: dateCreated,
+          site_name: row.site_name,
+          customer_name:row.customer_name,
+          request_creator_team_member_id: row.request_creator_team_member_id,
+          request_creator_user_id: row.request_creator_user_id,
+          request_creator_first_name: row.request_creator_first_name,
+          request_creator_last_name: row.request_creator_last_name,
+          request_creator_avatar: row.request_creator_avatar,
+          assignee_team_member_id: row.assignee_team_member_id,
+          assignee_user_id: row.assignee_user_id,
+          assignee_first_name: row.assignee_first_name,
+          assignee_last_name: row.assignee_last_name
+        };
+      }
+
+      customResponse.forEach(customField => {
+        requestMap[row.inventory_request_id][customField.field_name.toLowerCase()] = customField.inventory_response_value;
+      });
+    });
+
+    returnData = Object.values(requestMap);
+
+    totalCount = plv8.execute(`
+      SELECT COUNT(*) AS count
+      FROM inventory_request_schema.inventory_request_table r
+      JOIN inventory_request_schema.inventory_assignee_table a
+      ON a.inventory_assignee_asset_request_id = r.inventory_request_id
+      LEFT JOIN inventory_schema.site_table s
+      ON s.site_id = a.inventory_assignee_site_id
+      LEFT JOIN team_schema.team_member_table t
+      ON t.team_member_id = r.inventory_request_created_by
+      JOIN user_schema.user_table u
+      ON u.user_id = t.team_member_user_id
+      LEFT JOIN team_schema.team_member_table assignee_t
+      ON assignee_t.team_member_id = a.inventory_assignee_team_member_id
+      LEFT JOIN user_schema.user_table assignee_u
+      ON assignee_u.user_id = assignee_t.team_member_user_id
+      INNER JOIN inventory_schema.inventory_event_table e
+      ON event_status = r.inventory_request_status
+      WHERE r.inventory_request_form_id = '656a3009-7127-4960-9738-92afc42779a6'
+      ${searchCondition}
+      ${sitesCondition}
+      ${locationCondition}
+      ${departmentCondition}
+      ${assignedToPersonCondition}
+      ${assignedToSiteCondition}
+      ${categoryCondition}
+      ${statusCondition}
+    `)[0].count;
+  });
+
+  return {
+    data: returnData,
+    count: parseInt(totalCount)
+  };
+$$ LANGUAGE plv8;
+
+CREATE OR REPLACE FUNCTION edit_custom_event(
+    input_data JSON
+)
+RETURNS JSON
+SET search_path TO ''
+AS $$
+    let returnData = null;
+    plv8.subtransaction(function() {
+        const { editEventFormValues, teamMemberId, teamId, eventId } = input_data;
+        const eventDetails = editEventFormValues.event;
+        const fieldDetails = editEventFormValues.fields;
+        const assignedToDetails = editEventFormValues.assignedTo || {};
+
+        const assignedToArray = [
+            assignedToDetails.assignToPerson && "Person",
+            assignedToDetails.assignToCustomer && "Customer",
+            assignedToDetails.assignToSite && "Site"
+        ].filter(Boolean);
+
+        const sanitizedNewEventName = eventDetails.eventName.toLowerCase().replace(/\s+/g, '_').replace(/[^\w]/g, '');
+
+        const oldEventNameResult = plv8.execute(`
+            SELECT event_name
+            FROM inventory_schema.inventory_event_table
+            WHERE event_id = $1
+        `, [eventId]);
+
+        let oldEventName = oldEventNameResult.length > 0
+            ? oldEventNameResult[0].event_name.toLowerCase().replace(/\s+/g, '_').replace(/[^\w]/g, '')
+            : null;
+
+        let oldTableName = `event_${oldEventName}_table`;
+        let newTableName = `event_${sanitizedNewEventName}_table`;
+
+        if (oldEventName && oldEventName !== sanitizedNewEventName) {
+            plv8.execute(`
+                ALTER TABLE event_schema.${oldTableName}
+                RENAME TO ${newTableName}
+            `);
+            plv8.execute(`
+                ALTER TABLE event_schema.${newTableName}
+                RENAME COLUMN event_${oldEventName}_id TO event_${sanitizedNewEventName}_id
+            `);
+            plv8.execute(`
+                ALTER TABLE event_schema.${newTableName}
+                RENAME COLUMN event_${oldEventName}_date_created TO event_${sanitizedNewEventName}_date_created
+            `);
+            plv8.execute(`
+                ALTER TABLE event_schema.${newTableName}
+                RENAME COLUMN event_${oldEventName}_request_id TO event_${sanitizedNewEventName}_request_id
+            `);
+        }
+
+        let existingColumns = plv8.execute(`
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = $1
+            AND table_schema = 'event_schema'
+        `, [newTableName]).map(row => row.column_name);
+
+        plv8.execute(`
+            UPDATE inventory_schema.inventory_event_table
+            SET event_name = $1, event_description = $2, event_color = $3, event_is_disabled = $4, event_status = $5
+            WHERE event_id = $6
+        `, [
+            eventDetails.eventName,
+            eventDetails.eventDescription,
+            eventDetails.eventColor,
+            eventDetails.enableEvent ? false : true,
+            eventDetails.eventStatus,
+            eventId
+        ]);
+
+        const formData = plv8.execute(`
+            SELECT event_form_form_id
+            FROM inventory_schema.event_form_connection_table
+            WHERE event_form_event_id = $1
+        `, [eventId])[0].event_form_form_id;
+
+        plv8.execute(`
+            UPDATE inventory_schema.inventory_form_table
+            SET form_name = $1, form_description = $2, form_is_disabled = $3
+            WHERE form_id = $4
+        `, [
+            eventDetails.eventName,
+            eventDetails.eventDescription,
+            eventDetails.enableEvent,
+            formData
+        ]);
+
+        const sectionData = plv8.execute(`
+            SELECT section_id
+            FROM inventory_schema.section_table
+            WHERE section_form_id = $1
+            ORDER BY section_order ASC
+        `, [formData])[0].section_id;
+
+        plv8.execute(`
+            UPDATE inventory_schema.section_table
+            SET section_name = $1
+            WHERE section_id = $2
+        `, [
+            eventDetails.eventName + " Section",
+            sectionData,
+        ]);
+
+        let oldFieldData = plv8.execute(`
+            SELECT field_id, field_name, field_type
+            FROM inventory_schema.field_table
+            WHERE field_section_id = $1
+            ORDER BY field_order ASC
+        `, [sectionData]);
+
+        let oldFieldMap = {};
+        oldFieldData.forEach(existingField => {
+            oldFieldMap[existingField.field_id] = existingField;
+        });
+
+        const hasAssignedTo = Object.values(assignedToDetails).some(value => value === true);
+
+        if (!hasAssignedTo) {
+            plv8.execute(`
+                DELETE FROM inventory_schema.option_table
+                WHERE option_field_id IN (
+                    SELECT field_id FROM inventory_schema.field_table
+                    WHERE field_name = 'Appointed To' AND field_section_id = $1
+                )
+            `, [sectionData]);
+
+            plv8.execute(`
+                DELETE FROM inventory_schema.field_table
+                WHERE field_name = 'Appointed To' AND field_section_id = $1
+            `, [sectionData]);
+
+            const columnToDelete = `event_${sanitizedNewEventName}_appointed_to`;
+            plv8.execute(`
+                ALTER TABLE event_schema.${newTableName}
+                DROP COLUMN IF EXISTS ${columnToDelete}
+            `);
+        }
+
+        if (!assignedToDetails.assignToPerson) {
+            plv8.execute(`
+                DELETE FROM inventory_schema.field_table
+                WHERE field_name = 'Assigned To' AND field_section_id = $1
+            `, [sectionData]);
+
+            const columnToDelete = `event_${sanitizedNewEventName}_assigned_to`;
+            plv8.execute(`
+                ALTER TABLE event_schema.${newTableName}
+                DROP COLUMN IF EXISTS ${columnToDelete}
+            `);
+        }
+
+        if (!assignedToDetails.assignToSite) {
+            const columnsToDelete = ['site', 'location', 'department'].map(fieldName =>
+                `event_${sanitizedNewEventName}_${fieldName}`
+            );
+
+            columnsToDelete.forEach(column => {
+                plv8.execute(`
+                    ALTER TABLE event_schema.${newTableName}
+                    DROP COLUMN IF EXISTS ${column}
+                `);
+            });
+
+            plv8.execute(`
+                DELETE FROM inventory_schema.field_table
+                WHERE field_name IN ('Site', 'Location', 'Department') AND field_section_id = $1
+            `, [sectionData]);
+        }
+
+        if (!assignedToDetails.assignToCustomer) {
+            plv8.execute(`
+                DELETE FROM inventory_schema.field_table
+                WHERE field_name = 'Customer' AND field_section_id = $1
+            `, [sectionData]);
+
+            const columnToDelete = `event_${sanitizedNewEventName}_customer`;
+            plv8.execute(`
+                ALTER TABLE event_schema.${newTableName}
+                DROP COLUMN IF EXISTS ${columnToDelete}
+            `);
+        }
+
+        fieldDetails.forEach((field, index) => {
+            let fieldTypeSQL = '';
+            switch (field.field_type) {
+                case 'TEXT':
+                case 'TEXTAREA':
+                    fieldTypeSQL = 'VARCHAR(4000)';
+                    break;
+                case 'NUMBER':
+                    fieldTypeSQL = 'INT';
+                    break;
+                case 'CHECKBOX':
+                    fieldTypeSQL = 'BOOLEAN';
+                    break;
+                case 'DATE':
+                    fieldTypeSQL = 'TIMESTAMPTZ DEFAULT NOW()';
+                    break;
+                default:
+                    fieldTypeSQL = 'VARCHAR(4000)';
+            }
+
+            let oldField = oldFieldMap[field.field_id];
+            let oldColumnName = oldField ? `event_${oldEventName}_${oldField.field_name.toLowerCase().replace(/\s+/g, '_').replace(/[^\w]/g, '')}` : null;
+            let newColumnName = `event_${sanitizedNewEventName}_${field.field_label.toLowerCase().replace(/\s+/g, '_').replace(/[^\w]/g, '')}`;
+
+            if (oldColumnName && existingColumns.includes(oldColumnName) && !existingColumns.includes(newColumnName)) {
+                plv8.execute(`
+                    ALTER TABLE event_schema.${newTableName}
+                    RENAME COLUMN ${oldColumnName} TO ${newColumnName}
+                `);
+            } else if (!existingColumns.includes(newColumnName)) {
+                plv8.execute(`
+                    ALTER TABLE event_schema.${newTableName}
+                    ADD COLUMN ${newColumnName} ${fieldTypeSQL}
+                `);
+            }
+
+            let existingField = plv8.execute(`
+                SELECT field_id
+                FROM inventory_schema.field_table
+                WHERE field_name = $1 AND field_section_id = $2
+            `, [field.field_label, sectionData]);
+
+            if (existingField.length > 0) {
+                plv8.execute(`
+                    UPDATE inventory_schema.field_table
+                    SET field_is_required = $1, field_name = $2, field_is_disabled = $3
+                    WHERE field_id = $4
+                `, [
+                    field.field_is_required,
+                    field.field_label,
+                    field.field_is_included ? false : true,
+                    existingField[0].field_id
+                ]);
+
+                field.field_id = existingField[0].field_id;
+            } else {
+                let newFieldId = plv8.execute(`
+                    INSERT INTO inventory_schema.field_table (
+                        field_name, field_is_required, field_type, field_order, field_section_id, field_is_disabled
+                    ) VALUES ($1, $2, $3, $4, $5, $6)
+                    RETURNING field_id
+                `, [
+                    field.field_label,
+                    field.field_is_required,
+                    field.field_type,
+                    index + 1,
+                    sectionData,
+                    field.field_is_included ? false : true,
+                ])[0].field_id;
+
+                field.field_id = newFieldId;
+            }
+
+            if (field.field_name === "Appointed To") {
+                plv8.execute(`
+                    DELETE FROM inventory_schema.option_table
+                    WHERE option_field_id IN (
+                        SELECT field_id FROM inventory_schema.field_table
+                        WHERE field_name = 'Appointed To' AND field_section_id = $1
+                    )
+                `, [sectionData]);
+
+                assignedToArray.forEach((option, optionIndex) => {
+                    plv8.execute(`
+                        INSERT INTO inventory_schema.option_table (
+                            option_value, option_order, option_field_id
+                        ) VALUES ($1, $2, $3)
+                    `, [option, optionIndex + 1, field.field_id]);
+                });
+            }
+        });
+    });
+    return returnData;
+$$ LANGUAGE plv8;
+
+
+CREATE OR REPLACE FUNCTION get_asset_code_description(
+    input_data JSON
+)
+RETURNS JSON
+SET search_path TO ''
+AS $$
+    let returnData = null;
+    plv8.subtransaction(function() {
+
+        const { assetName, teamId } = input_data;
+
+        const itemData = plv8.execute(`
+           SELECT l.*
+           FROM item_schema.item_table i
+           INNER JOIN item_schema.item_level_three_description_table l
+           ON l.item_level_three_description_item_id = i.item_id
+           WHERE i.item_general_name = $1 AND i.item_team_id = $2 AND i.item_is_available = $3
+        `, [assetName, teamId, true]); // True for item_is_available
+
+        if (itemData.length > 0) {
+            returnData = itemData[0];
+        }
+    })
+    return returnData;
 $$ LANGUAGE plv8;
 
 
@@ -2938,3 +3319,6 @@ $$ LANGUAGE plv8;
 
 
 npx supabase gen types typescript --project-id "weoktclknvgedvdpmkss" --schema public,history_schema,user_schema,service_schema,unit_of_measurement_schema,lookup_schema,item_schema,form_schema,request_schema,other_expenses_schema,equipment_schema,memo_schema,jira_schema,ticket_schema,team_schema,hr_schema,inventory_schema,inventory_request_schema > utils/database.ts
+
+
+preparation for dynamic
