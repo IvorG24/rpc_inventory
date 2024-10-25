@@ -75,6 +75,16 @@ CREATE TABLE inventory_schema.customer_table (
   customer_team_id UUID REFERENCES team_schema.team_table(team_id) NOT NULL
 );
 
+CREATE TABLE inventory_schema.inventory_employee_connection_table (
+  inventory_employee_connection_id UUID DEFAULT uuid_generate_v4() PRIMARY KEY NOT NULL,
+  inventory_employee_connection_date_created TIMESTAMPTZ DEFAULT NOW() NOT NULl,
+  inventory_employee_connection_notes VARCHAR(4000),
+  inventory_employee_connection_site_id UUID REFERENCES inventory_schema.site_table(site_id) NOT NULL,
+  inventory_employee_connection_location_id UUID REFERENCES inventory_schema.location_table(location_id),
+  inventory_employee_connection_department_id UUID REFERENCES team_schema.team_department_table(team_department_id) NOT NULL,
+  inventory_employee_connection_employee_id UUID REFERENCES lookup_schema.scic_employee_table(scic_employee_id) NOT NULL
+);
+
 CREATE TABLE inventory_schema.event_form_connection_table (
   event_form_id UUID DEFAULT uuid_generate_v4() PRIMARY KEY NOT NULL,
   event_form_event_id UUID REFERENCES inventory_schema.inventory_event_table(event_id) NOT NULL,
@@ -172,7 +182,7 @@ CREATE TABLE inventory_request_schema.inventory_custom_response_table(
   inventory_response_id UUID DEFAULT uuid_generate_v4() PRIMARY KEY NOT NULL,
   inventory_response_value VARCHAR(4000) NOT NULL,
   inventory_response_field_id UUID REFERENCES inventory_schema.field_table(field_id),
-  inventory_response_asset_request_id UUID REFERENCES inventory_request_schema.inventory_request_table(inventory_request_id) NOT NULL
+  inventory_response_request_id UUID REFERENCES inventory_request_schema.inventory_request_table(inventory_request_id) NOT NULL
 );
 
 CREATE TABLE inventory_request_schema.inventory_assignee_table(
@@ -353,7 +363,7 @@ AS $$
         WHERE form_id = '${formId}'
       `
     )[0];
-
+    const isAssetForm = formData.form_name === "Asset Inventory" ? FALSE : TRUE;
     const sectionData = [];
     const formSection = plv8.execute(`SELECT * FROM inventory_schema.section_table WHERE section_form_id = '${formId}' ORDER BY section_order ASC`);
 
@@ -363,7 +373,7 @@ AS $$
           SELECT *
           FROM inventory_schema.field_table
           WHERE field_section_id = '${section.section_id}'
-          AND field_is_custom_field = False
+          AND field_is_custom_field = '${isAssetForm}'
           AND field_is_sub_category = False
           AND field_is_disabled = False
           ORDER BY field_order ASC
@@ -573,7 +583,7 @@ AS $$
     )[0];
     plv8.execute(`
      INSERT INTO inventory_request_schema.inventory_custom_response_table
-        (inventory_response_value,inventory_response_field_id,inventory_response_asset_request_id)
+        (inventory_response_value,inventory_response_field_id,inventory_response_request_id)
         VALUES
         ${responseValues}
     `);
@@ -627,6 +637,9 @@ AS $$
         WHERE inventory_request_id = $1
     `,[assetIdData.inventory_request_id])[0]
 
+  })
+return returnData
+$$ LANGUAGE plv8;
 
 CREATE OR REPLACE FUNCTION inventory_request_page_on_load(
     input_data JSON
@@ -924,18 +937,18 @@ AS $$
 
     plv8.execute(`
       DELETE FROM inventory_request_schema.inventory_custom_response_table
-      WHERE inventory_response_asset_request_id = $1
+      WHERE inventory_response_request_id = $1
     `, [assetId]);
 
      plv8.execute(`
       DELETE FROM inventory_request_schema.inventory_custom_response_table
-      WHERE inventory_response_asset_request_id = $1
+      WHERE inventory_response_request_id = $1
     `, [assetId]);
 
     if(responseValues.length > 0 ){
     plv8.execute(`
      INSERT INTO inventory_request_schema.inventory_custom_response_table
-        (inventory_response_value,inventory_response_field_id,inventory_response_asset_request_id) VALUES ${responseValues}
+        (inventory_response_value,inventory_response_field_id,inventory_response_request_id) VALUES ${responseValues}
     `);
     }
   });
@@ -974,7 +987,7 @@ AS $$
             SELECT cr.inventory_response_value
             FROM inventory_request_schema.inventory_custom_response_table AS cr
             WHERE cr.inventory_response_field_id = f.field_id
-            AND cr.inventory_response_asset_request_id = '${assetIdData.inventory_request_id}'
+            AND cr.inventory_response_request_id = '${assetIdData.inventory_request_id}'
             LIMIT 1
           ) AS field_response
           FROM inventory_schema.custom_field_table AS c
@@ -998,7 +1011,7 @@ AS $$
             SELECT cr.inventory_response_value
             FROM inventory_request_schema.inventory_custom_response_table AS cr
             WHERE cr.inventory_response_field_id = f.field_id
-            AND cr.inventory_response_asset_request_id = '${assetIdData.inventory_request_id}'
+            AND cr.inventory_response_request_id = '${assetIdData.inventory_request_id}'
             LIMIT 1
           ) AS field_response
           FROM inventory_schema.sub_category_table AS s
@@ -1063,6 +1076,7 @@ AS $$
     { label: "Site", value: "inventory_request_site" },
     { label: "Location", value: "inventory_request_location" },
     { label: "Department", value: "inventory_request_department" },
+    { label: "Category", value: "inventory_request_category" },
     { label: "Notes", value: "inventory_request_notes" },
     { label: "Purchase Order", value: "inventory_request_purchase_order" },
     { label: "Purchase Date", value: "inventory_request_purchase_date" },
@@ -1221,169 +1235,27 @@ AS $$
     return returnData;
 $$ LANGUAGE plv8;
 
-CREATE OR REPLACE FUNCTION event_status_update(
-    input_data JSON
-)
-RETURNS JSON
-SET search_path TO ''
-AS $$
-  let returnData = [];
-  plv8.subtransaction(function() {
-    const { fieldResponse, selectedRow, teamMemberId, type,signatureUrl,eventId } = input_data;
-    const currentDate = new Date(plv8.execute(`SELECT public.get_current_date()`)[0].get_current_date);
-	let listOfAssets = [];
-
-    const eventData = plv8.execute(`
-        SELECT *
-        FROM inventory_schema.inventory_event_table
-        WHERE event_id = $1
-    `,[eventId])[0];
-
-	const combinedAssets = plv8.execute(`
-	    SELECT
-	        r.parent_asset_id,
-	        array_agg(r.child_asset_id) as child_assets
-	    FROM inventory_request_schema.inventory_request_table i
-	    JOIN inventory_request_schema.inventory_relationship_table r
-	    ON r.parent_asset_id = i.inventory_request_id
-	    WHERE r.parent_asset_id = ANY($1)
-	    GROUP BY r.parent_asset_id
-	`, [selectedRow]);
-
-
-        if (combinedAssets.length === 0) {
-            listOfAssets = selectedRow;
-        } else {
-            combinedAssets.forEach(asset => {
-                listOfAssets.push(asset.parent_asset_id);
-                if (asset.child_assets.length > 0) {
-                    asset.child_assets.forEach(childAsset => {
-                        listOfAssets.push(childAsset);
-                    });
-                } else {
-                    listOfAssets.push(asset.parent_asset_id);
-                }
-            });
-        }
-
-        const checkoutFrom = fieldResponse.find(f => f.name === "Check out to")?.response || null;
-        const date1 = new Date(fieldResponse.find(f => f.name === "Date 1")?.response ).toIsoString()|| currentDate;
-        const site = fieldResponse.find(f => f.name === "Site")?.response || null;
-        const department = fieldResponse.find(f => f.name === "Department")?.response || null;
-        const location = fieldResponse.find(f => f.name === "Location")?.response || null;
-        const person = fieldResponse.find(f => f.name === "Assign To")?.response || null;
-        const notes = fieldResponse.find(f => f.name === "Notes")?.response || null;
-
-        let personTeamMemberId = null;
-        if (person) {
-            const [firstName, lastName] = person.split(' ');
-            if (firstName && lastName) {
-            const result = plv8.execute(`
-                SELECT t.team_member_id
-                FROM user_schema.user_table u
-                JOIN team_schema.team_member_table t
-                ON t.team_member_user_id = u.user_id
-                WHERE u.user_first_name = $1 AND u.user_last_name = $2
-            `, [firstName, lastName]);
-
-            personTeamMemberId = result[0]?.team_member_id || null;
-            }
-        }
-
-        let siteID = null;
-        if (checkoutFrom === "Site") {
-            const siteResult = plv8.execute(`
-            SELECT site_id
-            FROM inventory_schema.site_table
-            WHERE site_name ILIKE '%' || $1 || '%'
-            `, [site]);
-
-            siteID = siteResult[0]?.site_id || null;
-        }
-
-        listOfAssets.forEach(function (requestId) {
-            const currentStatusData = plv8.execute(`
-                SELECT inventory_request_status
-                FROM inventory_request_schema.inventory_request_table
-                WHERE inventory_request_id = $1;
-            `, [requestId]);
-
-            const currentStatus = currentStatusData[0]?.inventory_request_status || null;
-
-		   plv8.execute(`
-                UPDATE inventory_request_schema.inventory_request_table
-                SET
-                    inventory_request_status = $1,
-                    inventory_request_site = COALESCE($2, inventory_request_site),
-                    inventory_request_location = COALESCE($3, inventory_request_location),
-                    inventory_request_department = COALESCE($4, inventory_request_department)
-                WHERE inventory_request_id = $5
-                RETURNING *;
-		`, [eventData.event_status, site, location, department, requestId]);
-
-            plv8.execute(`
-                UPDATE inventory_request_schema.inventory_assignee_table
-                SET
-                    inventory_assignee_team_member_id = $1,
-                    inventory_assignee_site_id =  $2
-                WHERE inventory_assignee_asset_request_id = $3;
-            `, [personTeamMemberId, siteID, requestId]);
-
-            plv8.execute(`
-                INSERT INTO inventory_request_schema.inventory_history_table (
-                    inventory_history_event,
-                    inventory_history_changed_to,
-                    inventory_history_changed_from,
-                    inventory_history_request_id,
-                    inventory_history_assigneed_to,
-                    inventory_history_action_by
-                )
-                VALUES (
-                    $1, $2, $3, $4, $5, $6
-                );
-            `, [
-            eventData.event_name,
-            eventData.event_status,
-            currentStatus,
-            requestId,
-            site || person || null,
-            teamMemberId
-            ]);
-
-            plv8.execute(`
-                INSERT INTO inventory_request_schema.inventory_event_table (
-                    inventory_event,
-                    inventory_event_date_created,
-                    inventory_event_notes,
-                    inventory_event_request_id,
-                    inventory_event_signature
-                )
-                VALUES (
-                    $1, $2, $3, $4, $5, $6
-                );
-            `, [
-            eventData.event_name,
-            date1,
-            notes,
-            requestId,
-            signatureUrl
-            ]);
-        });
-  });
-  return returnData;
-$$ LANGUAGE plv8;
-
 CREATE OR REPLACE FUNCTION get_asset_history(
     input_data JSON
 )
 RETURNS JSON
 SET search_path TO ''
 AS $$
+
  let returnData = [];
  let count = 0;
+
  plv8.subtransaction(function() {
-    const { assetId, page = 1, limit = 13 } = input_data;
+    const { assetId, page = 1, limit = 13, event = [], date, actionBy = [] } = input_data;
     const offset = (page - 1) * limit;
+
+    const eventCondition = event.length > 0 ? `AND h.inventory_history_event = ANY('{${event.join(',')}}')` : "";
+    const actionByCondition = actionBy.length > 0 ? `AND t.team_member_id = ANY('{${actionBy.join(',')}}')` : "";
+    const dateCondition = date ?
+	  `AND h.inventory_history_date_created::date = '${new Date(new Date(date).setDate(new Date(date).getDate() + 1)).toISOString().slice(0, 10)}'`
+	  : "";
+
+
 
     const assetIdData = plv8.execute(`
         SELECT inventory_request_id
@@ -1391,11 +1263,17 @@ AS $$
         WHERE inventory_request_tag_id = '${assetId}'
     `)[0];
 
+
     const totalCountResult = plv8.execute(`
         SELECT COUNT(*) AS total_count
         FROM inventory_request_schema.inventory_history_table h
-        WHERE h.inventory_history_request_id = $1
-    `, [assetIdData.inventory_request_id]);
+        INNER JOIN team_schema.team_member_table t
+        ON t.team_member_id = h.inventory_history_action_by
+        WHERE h.inventory_history_request_id = '${assetIdData.inventory_request_id}'
+        ${eventCondition}
+        ${actionByCondition}
+        ${dateCondition}
+    `);
 
     count = parseInt(totalCountResult[0].total_count);
 
@@ -1415,18 +1293,22 @@ AS $$
         ON t.team_member_id = h.inventory_history_action_by
         INNER JOIN user_schema.user_table u
         ON u.user_id = t.team_member_user_id
-        WHERE h.inventory_history_request_id = $1
+        WHERE h.inventory_history_request_id = '${assetIdData.inventory_request_id}'
+        ${eventCondition}
+        ${actionByCondition}
+        ${dateCondition}
         ORDER BY h.inventory_history_date_created DESC
-        LIMIT $2 OFFSET $3
-    `, [assetIdData.inventory_request_id, limit, offset]);
+        LIMIT ${limit} OFFSET ${offset}
+    `);
+
     returnData = historyData;
  });
+
  return {
     data: returnData,
     totalCount: count
   };
 $$ LANGUAGE plv8;
-
 
 CREATE OR REPLACE FUNCTION update_drawer_data(
     input_data JSON
@@ -1616,7 +1498,6 @@ AS $$
     });
  });
 $$ LANGUAGE plv8;
-
 
 CREATE OR REPLACE FUNCTION get_child_asset_option(
     input_data JSON
@@ -2408,20 +2289,19 @@ AS $$
     const location = fieldResponse.find(f => f.name === "Location")?.response || null;
     const person = fieldResponse.find(f => f.name === "Assigned To")?.response || null;
 
+
     let personTeamMemberId = null;
     if (from === "Person") {
         if(person === null) return;
         const [firstName, lastName] = person.split(' ');
         if (firstName && lastName) {
             const result = plv8.execute(`
-                SELECT t.team_member_id
-                FROM user_schema.user_table u
-                JOIN team_schema.team_member_table t
-                ON t.team_member_user_id = u.user_id
-                WHERE u.user_first_name = $1 AND u.user_last_name = $2
+                SELECT scic_employee_id
+                FROM lookup_schema.scic_employee_table
+                WHERE scic_employee_first_name = $1 AND scic_employee_last_name = $2
             `, [firstName, lastName]);
 
-            personTeamMemberId = result[0]?.team_member_id || null;
+            personTeamMemberId = result[0]?.scic_employee_id || null;
         }
     }
 
@@ -2469,11 +2349,11 @@ AS $$
             plv8.execute(`
                 UPDATE inventory_request_schema.inventory_assignee_table
                 SET
-                    inventory_assignee_team_member_id = $1,
+                    inventory_assignee_employee_id = $1,
                     inventory_assignee_site_id = $2,
                     inventory_assignee_customer_id = $3
                     WHERE inventory_assignee_asset_request_id = $4;
-            `, [eventData.event_status === "AVAILABLE" ? null : personTeamMemberId, eventData.event_status === "AVAILABLE" ? null : siteID, eventData.event_status === "AVAILABLE" ? null : customerID , requestId]);
+            `, [eventData.event_status === "AVAILABLE" ? null : personTeamMemberId, eventData.event_status === "AVAILABLE" ? null : siteID, customerID ? customerID : null , requestId]);
 
             plv8.execute(`
                 INSERT INTO inventory_request_schema.inventory_history_table (
@@ -2481,20 +2361,14 @@ AS $$
                     inventory_history_changed_to,
                     inventory_history_changed_from,
                     inventory_history_request_id,
-                    inventory_history_assigneed_to,
                     inventory_history_action_by
                 )
-                VALUES ($1, $2, $3, $4, $5, $6);
+                VALUES ($1, $2, $3, $4, $5);
             `, [
-                eventData.event_name,
-                eventData.event_status,
-                currentStatus,
+                eventData.event_name.toUpperCase(),
+                eventData.event_status.toUpperCase(),
+                currentStatus.toUpperCase(),
                 requestId,
-                siteID ? site :
-                personTeamMemberId ? personTeamMemberId :
-                person ? person :
-                CustomerID ? customerID :
-                null,
                 teamMemberId
             ]);
 
@@ -2784,6 +2658,7 @@ AS $$
   };
 $$ LANGUAGE plv8;
 
+//changed
 CREATE OR REPLACE FUNCTION get_asset_spreadsheet_view(
     input_data JSON
 )
@@ -2814,7 +2689,7 @@ AS $$
     const sitesCondition = sites.length > 0 ? `AND r.inventory_request_site = ANY('{${sites.join(',')}}')` : "";
     const locationCondition = locations ? `AND r.inventory_request_location = '${locations}'` : "";
     const departmentCondition = department.length > 0 ? `AND r.inventory_request_department = ANY('{${department.join(',')}}')` : "";
-    const assignedToPersonCondition = assignedToPerson.length > 0 ? `AND assignee_t.team_member_id = ANY('{${assignedToPerson.join(',')}}')` : "";
+    const assignedToPersonCondition = assignedToPerson.length > 0 ? `AND  ae.scic_employee_id = ANY('{${assignedToPerson.join(',')}}')` : "";
     const assignedToSiteCondition = assignedToSite.length > 0 ? `AND s.site_name= ANY('{${assignedToSite.join(',')}}')` : "";
     const categoryCondition = category.length > 0 ? `AND r.inventory_request_category = ANY('{${category.join(',')}}')` : "";
     const searchCondition = search ? `AND r.inventory_request_tag_id = '${search}'` : "";
@@ -2825,51 +2700,47 @@ AS $$
     const offset = (page - 1) * limit;
 
     let rawResult = plv8.execute(`
-       SELECT
-        r.*,
-        a.inventory_assignee_asset_request_id,
-        a.inventory_assignee_site_id,
-        a.inventory_assignee_team_member_id,
-        s.site_name,
-        c.customer_name,
-        t.team_member_id AS request_creator_team_member_id,
-        u.user_id AS request_creator_user_id,
-        u.user_first_name AS request_creator_first_name,
-        u.user_last_name AS request_creator_last_name,
-        u.user_avatar AS request_creator_avatar,
-        assignee_t.team_member_id AS assignee_team_member_id,
-        assignee_u.user_id AS assignee_user_id,
-        assignee_u.user_first_name AS assignee_first_name,
-        assignee_u.user_last_name AS assignee_last_name,
-        e.event_color
-      FROM inventory_request_schema.inventory_request_table r
-      JOIN inventory_request_schema.inventory_assignee_table a
-      ON a.inventory_assignee_asset_request_id = r.inventory_request_id
-      LEFT JOIN inventory_schema.site_table s
-      ON s.site_id = a.inventory_assignee_site_id
-      LEFT JOIN inventory_schema.customer_table c
-      ON c.customer_id = a.inventory_assignee_customer_id
-      LEFT JOIN team_schema.team_member_table t
-      ON t.team_member_id = r.inventory_request_created_by
-      JOIN user_schema.user_table u
-      ON u.user_id = t.team_member_user_id
-      LEFT JOIN team_schema.team_member_table assignee_t
-      ON assignee_t.team_member_id = a.inventory_assignee_team_member_id
-      LEFT JOIN user_schema.user_table assignee_u
-      ON assignee_u.user_id = assignee_t.team_member_user_id
-      INNER JOIN inventory_schema.inventory_event_table e
-      ON event_status = r.inventory_request_status
-      WHERE r.inventory_request_form_id = '656a3009-7127-4960-9738-92afc42779a6'
-      ${searchCondition}
-      ${sitesCondition}
-      ${locationCondition}
-      ${departmentCondition}
-      ${assignedToPersonCondition}
-      ${assignedToSiteCondition}
-      ${categoryCondition}
-      ${statusCondition}
-      ${sortQuery}
-      LIMIT ${limit} OFFSET ${offset}
+        SELECT
+            r.*,
+            a.inventory_assignee_asset_request_id,
+            a.inventory_assignee_site_id,
+            a.inventory_assignee_employee_id,
+            s.site_name,
+            c.customer_name,
+            t.team_member_id AS request_creator_team_member_id,
+            u.user_id AS request_creator_user_id,
+            u.user_first_name AS request_creator_first_name,
+            u.user_last_name AS request_creator_last_name,
+            u.user_avatar AS request_creator_avatar,
+            ae.scic_employee_first_name,
+            ae.scic_employee_last_name,
+            e.event_color
+        FROM inventory_request_schema.inventory_request_table r
+        JOIN inventory_request_schema.inventory_assignee_table a
+        ON a.inventory_assignee_asset_request_id = r.inventory_request_id
+        LEFT JOIN inventory_schema.site_table s
+        ON s.site_id = a.inventory_assignee_site_id
+        LEFT JOIN inventory_schema.customer_table c
+        ON c.customer_id = a.inventory_assignee_customer_id
+        LEFT JOIN team_schema.team_member_table t
+        ON t.team_member_id = r.inventory_request_created_by
+        JOIN user_schema.user_table u
+        ON u.user_id = t.team_member_user_id
+        LEFT JOIN lookup_schema.scic_employee_table ae
+        ON a.inventory_assignee_employee_id = ae.scic_employee_id
+        INNER JOIN inventory_schema.inventory_event_table e
+        ON e.event_status = r.inventory_request_status
+        WHERE r.inventory_request_form_id = '656a3009-7127-4960-9738-92afc42779a6'
+        ${searchCondition}
+        ${sitesCondition}
+        ${locationCondition}
+        ${departmentCondition}
+        ${assignedToPersonCondition}
+        ${assignedToSiteCondition}
+        ${categoryCondition}
+        ${statusCondition}
+        ${sortQuery}
+        LIMIT ${limit} OFFSET ${offset}
     `);
 
     const eventRequestData = plv8.execute(`
@@ -2915,7 +2786,7 @@ AS $$
           FROM inventory_request_schema.inventory_custom_response_table cr
           JOIN inventory_schema.field_table f
           ON f.field_id = cr.inventory_response_field_id
-          WHERE cr.inventory_response_asset_request_id = '${row.inventory_request_id}' AND f.field_is_disabled = False
+          WHERE cr.inventory_response_request_id = '${row.inventory_request_id}' AND f.field_is_disabled = False
       `);
 
       if (!requestMap[row.inventory_request_id]) {
@@ -2945,7 +2816,7 @@ AS $$
           inventory_request_created_by: row.inventory_request_created_by,
           inventory_assignee_asset_request_id: row.inventory_assignee_asset_request_id,
           inventory_assignee_site_id: row.inventory_assignee_site_id,
-          inventory_assignee_team_member_id: row.inventory_assignee_team_member_id,
+          inventory_assignee_employee_id: row.inventory_assignee_employee_id,
           inventory_request_notes: latestNotes,
           inventory_event_date_created: dateCreated,
           site_name: row.site_name,
@@ -2955,38 +2826,36 @@ AS $$
           request_creator_first_name: row.request_creator_first_name,
           request_creator_last_name: row.request_creator_last_name,
           request_creator_avatar: row.request_creator_avatar,
-          assignee_team_member_id: row.assignee_team_member_id,
-          assignee_user_id: row.assignee_user_id,
-          assignee_first_name: row.assignee_first_name,
-          assignee_last_name: row.assignee_last_name
+          assignee_first_name: row.scic_employee_first_name,
+          assignee_last_name: row.scic_employee_last_name
         };
       }
 
-      customResponse.forEach(customField => {
-        requestMap[row.inventory_request_id][customField.field_name.toLowerCase()] = customField.inventory_response_value;
-      });
+        customResponse.forEach(customField => {
+        requestMap[row.inventory_request_id][customField.field_name.toLowerCase().replace(/\s+/g, '_')] = customField.inventory_response_value;
+        });
     });
 
     returnData = Object.values(requestMap);
 
     totalCount = plv8.execute(`
       SELECT COUNT(*) AS count
-      FROM inventory_request_schema.inventory_request_table r
-      JOIN inventory_request_schema.inventory_assignee_table a
-      ON a.inventory_assignee_asset_request_id = r.inventory_request_id
-      LEFT JOIN inventory_schema.site_table s
-      ON s.site_id = a.inventory_assignee_site_id
-      LEFT JOIN team_schema.team_member_table t
-      ON t.team_member_id = r.inventory_request_created_by
-      JOIN user_schema.user_table u
-      ON u.user_id = t.team_member_user_id
-      LEFT JOIN team_schema.team_member_table assignee_t
-      ON assignee_t.team_member_id = a.inventory_assignee_team_member_id
-      LEFT JOIN user_schema.user_table assignee_u
-      ON assignee_u.user_id = assignee_t.team_member_user_id
-      INNER JOIN inventory_schema.inventory_event_table e
-      ON event_status = r.inventory_request_status
-      WHERE r.inventory_request_form_id = '656a3009-7127-4960-9738-92afc42779a6'
+         FROM inventory_request_schema.inventory_request_table r
+        JOIN inventory_request_schema.inventory_assignee_table a
+        ON a.inventory_assignee_asset_request_id = r.inventory_request_id
+        LEFT JOIN inventory_schema.site_table s
+        ON s.site_id = a.inventory_assignee_site_id
+        LEFT JOIN inventory_schema.customer_table c
+        ON c.customer_id = a.inventory_assignee_customer_id
+        LEFT JOIN team_schema.team_member_table t
+        ON t.team_member_id = r.inventory_request_created_by
+        JOIN user_schema.user_table u
+        ON u.user_id = t.team_member_user_id
+        LEFT JOIN lookup_schema.scic_employee_table ae
+        ON a.inventory_assignee_employee_id = ae.scic_employee_id
+        INNER JOIN inventory_schema.inventory_event_table e
+        ON e.event_status = r.inventory_request_status
+        WHERE r.inventory_request_form_id = '656a3009-7127-4960-9738-92afc42779a6'
       ${searchCondition}
       ${sitesCondition}
       ${locationCondition}
@@ -3284,6 +3153,62 @@ AS $$
     return returnData;
 $$ LANGUAGE plv8;
 
+CREATE OR REPLACE FUNCTION get_location_list(
+    input_data JSON
+)
+RETURNS JSON
+SET search_path TO ''
+AS $$
+     let returnData = [];
+    let totalCount = 0;
+
+    plv8.subtransaction(function() {
+        const {site_id, page, limit} = input_data;
+        const start = (page - 1) * limit;
+
+        let query = `
+            SELECT l.*, s.site_name
+            FROM inventory_schema.location_table l
+            INNER JOIN inventory_schema.site_table s
+            ON s.site_id = l.location_site_id
+            WHERE l.location_is_disabled = false
+        `;
+
+        if (site_id) {
+            query += ` AND l.location_site_id = '${site_id}'`;
+        }
+
+        query += ` LIMIT '${limit}' OFFSET '${start}'`;
+
+        const locationData = plv8.execute(query);
+
+        let countQuery = `
+            SELECT COUNT(*)
+            FROM inventory_schema.location_table l
+            INNER JOIN inventory_schema.site_table s
+            ON s.site_id = l.location_site_id
+            WHERE l.location_is_disabled = false
+        `;
+
+        if (site_id) {
+            countQuery += ` AND l.location_site_id = '${site_id}'`;
+        }
+
+        const countResult = plv8.execute(countQuery);
+        if (countResult.length > 0) {
+            totalCount = parseInt(countResult[0].count);
+        }
+
+        if (locationData.length > 0) {
+            returnData = locationData;
+        }
+    });
+
+    return {
+        data:returnData,
+        totalCount
+    };
+$$ LANGUAGE plv8;
 
 CREATE OR REPLACE FUNCTION get_asset_code_description(
     input_data JSON
@@ -3311,10 +3236,572 @@ AS $$
     return returnData;
 $$ LANGUAGE plv8;
 
+CREATE OR REPLACE FUNCTION get_employee_inventory_list(
+    input_data JSON
+)
+RETURNS JSON
+SET search_path TO ''
+AS $$
+    let returnData = [];
+    let totalCount = 0;
+    let requestMap = {};
+
+    plv8.subtransaction(function() {
+        const {search, page, limit, offset, teamID, nameSearch} = input_data;
+        const start = (page - 1) * limit;
+
+        // Dynamically retrieve custom field names from the field_table
+        const fieldNames = plv8.execute(`
+            SELECT field_name
+            FROM inventory_schema.field_table
+            WHERE field_section_id = 'c7c097b7-9174-47dd-b156-2c4dc9973d65' AND field_is_custom_field = True
+        `).map((field) => field.field_name);
+
+        // Ensure scic_employee_id is selected to map custom fields
+        let query = `
+            SELECT
+              s.scic_employee_id,
+              s.scic_employee_hris_id_number,
+              s.scic_employee_first_name,
+              s.scic_employee_middle_name,
+              s.scic_employee_last_name,
+              s.scic_employee_suffix,
+              st.site_name,
+              t.team_department_name,
+              l.location_name
+            FROM lookup_schema.scic_employee_table s
+            INNER JOIN inventory_schema.inventory_employee_connection_table i
+            ON s.scic_employee_id = i.inventory_employee_connection_employee_id
+            INNER JOIN inventory_schema.site_table st
+            ON st.site_id = i.inventory_employee_connection_site_id
+            INNER JOIN team_schema.team_department_table t
+            ON t.team_department_id = i.inventory_employee_connection_department_id
+            LEFT JOIN inventory_schema.location_table l
+            ON l.location_id = i.inventory_employee_connection_location_id
+            WHERE st.site_team_id = '${teamID}'
+        `;
+
+        let countQuery = `
+            SELECT COUNT(*)
+            FROM lookup_schema.scic_employee_table s
+            INNER JOIN inventory_schema.inventory_employee_connection_table i
+            ON s.scic_employee_id = i.inventory_employee_connection_employee_id
+            INNER JOIN inventory_schema.site_table st
+            ON st.site_id = i.inventory_employee_connection_site_id
+            INNER JOIN team_schema.team_department_table t
+            ON t.team_department_id = i.inventory_employee_connection_department_id
+            LEFT JOIN inventory_schema.location_table l
+            ON l.location_id = i.inventory_employee_connection_location_id
+            WHERE st.site_team_id = '${teamID}'
+        `;
+
+        // Optional search filters
+        if (search) {
+            query += ` AND s.scic_employee_hris_id_number = '${search}'`;
+            countQuery += ` AND s.scic_employee_hris_id_number = '${search}'`;
+        }
+        if (nameSearch) {
+            const firstName = nameSearch[0];
+            const lastName = nameSearch.slice(1).join(' ');
+            query += ` AND s.scic_employee_first_name ILIKE $3 AND s.scic_employee_last_name ILIKE $4`;
+        }
+        if (page && limit) {
+            query += ` LIMIT '${limit}' OFFSET '${start}'`;
+        }
+
+        const employeeData = plv8.execute(query);
+        const countResult = plv8.execute(countQuery);
+
+        // Process each employee
+        employeeData.forEach((employee) => {
+            const customResponse = plv8.execute(`
+                SELECT f.field_name, cr.inventory_response_value
+                FROM inventory_request_schema.inventory_custom_response_table cr
+                JOIN inventory_schema.field_table f
+                ON f.field_id = cr.inventory_response_field_id
+                WHERE cr.inventory_response_request_id = '${employee.scic_employee_id}' AND f.field_is_disabled = False
+            `);
+
+            // Initialize employee record in requestMap if it doesn't exist
+            if (!requestMap[employee.scic_employee_id]) {
+                requestMap[employee.scic_employee_id] = {
+                    ...employee
+                };
+            }
+
+            // Add custom response fields to the employee record
+            customResponse.forEach(customField => {
+                requestMap[employee.scic_employee_id][customField.field_name] = customField.inventory_response_value;
+            });
+        });
+
+        // Ensure every employee has all dynamic custom fields initialized (empty string if missing)
+        Object.values(requestMap).forEach(employee => {
+            fieldNames.forEach(fieldName => {
+                if (!employee[fieldName]) {
+                    employee[fieldName] = "";  // Initialize missing fields to an empty string
+                }
+            });
+        });
+
+        // Update total count of employees
+        if (countResult.length > 0) {
+            totalCount = parseInt(countResult[0].count);
+        }
+
+        // Collect return data
+        returnData = Object.values(requestMap);
+    });
+
+    return {
+        data: returnData,
+        totalCount
+    };
+$$ LANGUAGE plv8;
 
 
+CREATE OR REPLACE FUNCTION import_employee_data(
+    input_data JSON
+)
+RETURNS JSON
+SET search_path TO ''
+AS $$
+    let insertedCount = 0;
+    let errorCount = 0;
+    let errorMessages = [];
+
+    plv8.subtransaction(function() {
+        const employees = input_data.employees;
+
+        if (!employees || !Array.isArray(employees)) {
+            throw new Error('Invalid input data: employees array is missing');
+        }
+
+        const chunkArray = (array, chunkSize) => {
+            const results = [];
+            while (array.length) {
+                results.push(array.splice(0, chunkSize));
+            }
+            return results;
+        };
+
+        const insertBatch = (batch) => {
+            batch.forEach(employee => {
+
+				const employeeInsertQuery = `
+				    INSERT INTO lookup_schema.scic_employee_table (
+				        scic_employee_hris_id_number,
+				        scic_employee_first_name,
+				        scic_employee_middle_name,
+				        scic_employee_last_name,
+				        scic_employee_suffix
+				    ) VALUES ($1, $2, $3, $4, $5)
+				    ON CONFLICT (scic_employee_hris_id_number)
+				    DO UPDATE SET
+				        scic_employee_first_name = EXCLUDED.scic_employee_first_name,
+				        scic_employee_middle_name = EXCLUDED.scic_employee_middle_name,
+				        scic_employee_last_name = EXCLUDED.scic_employee_last_name,
+				        scic_employee_suffix = EXCLUDED.scic_employee_suffix
+				    RETURNING scic_employee_id;
+				`;
+
+                const employeeResult = plv8.execute(employeeInsertQuery, [
+                    employee.scic_employee_hris_id_number,
+                    employee.scic_employee_first_name,
+                    employee.scic_employee_middle_name,
+                    employee.scic_employee_last_name,
+                    employee.scic_employee_suffix
+                ]);
+
+                if (employeeResult.length === 0) {
+                    return;
+                }
+
+                const employeeId = employeeResult[0].scic_employee_id;
+
+                const siteQuery = `
+                    SELECT site_id
+                    FROM inventory_schema.site_table
+                    WHERE site_name ILIKE $1;
+                `;
+                const siteData = plv8.execute(siteQuery, [employee.site_name]);
+
+                if (siteData.length === 0) {
+                    throw new Error(`Site not found for ${employee.site_name}`);
+                }
+
+                const siteId = siteData[0].site_id;
+
+                const locationQuery = `
+                    SELECT location_id
+                    FROM inventory_schema.location_table
+                    WHERE location_name ILIKE $1;
+                `;
+                const locationData = plv8.execute(locationQuery, [employee.location_name]);
+
+                if (locationData.length === 0) {
+                    throw new Error(`Location not found for ${employee.location_name}`);
+                }
+
+                const locationId = locationData[0].location_id;
+
+                const departmentQuery = `
+                    SELECT team_department_id
+                    FROM team_schema.team_department_table
+                    WHERE team_department_name ILIKE $1;
+                `;
+                const departmentData = plv8.execute(departmentQuery, [employee.team_department_name]);
+
+                if (departmentData.length === 0) {
+                    throw new Error(`Department not found for ${employee.team_department_name}`);
+                }
+
+                const departmentId = departmentData[0].team_department_id;
+
+				const connectionQuery = `
+				    INSERT INTO inventory_schema.inventory_employee_connection_table (
+				        inventory_employee_connection_employee_id,
+				        inventory_employee_connection_site_id,
+				        inventory_employee_connection_location_id,
+				        inventory_employee_connection_department_id
+				    ) VALUES ($1, $2, $3, $4)
+				    ON CONFLICT (inventory_employee_connection_employee_id)
+				    DO UPDATE SET
+				        inventory_employee_connection_site_id = EXCLUDED.inventory_employee_connection_site_id,
+				        inventory_employee_connection_location_id = EXCLUDED.inventory_employee_connection_location_id,
+				        inventory_employee_connection_department_id = EXCLUDED.inventory_employee_connection_department_id;
+				`;
+                plv8.execute(connectionQuery, [
+                    employeeId,
+                    siteId,
+                    locationId,
+                    departmentId,
+                ]);
+
+                insertedCount += 1;
+            });
+        };
+
+        const batches = chunkArray(employees, 10);
+        batches.forEach(batch => {
+            insertBatch(batch);
+        });
+    });
+
+    return {
+        success: insertedCount,
+    };
+$$ LANGUAGE plv8;
+
+CREATE OR REPLACE FUNCTION create_update_employee_data(
+    input_data JSON
+)
+RETURNS JSON
+SET search_path TO ''
+AS $$
+    plv8.subtransaction(function() {
+    const { employeeData, responseValues } = input_data;
+
+      const employeeId = plv8.execute(`
+        INSERT INTO lookup_schema.scic_employee_table (
+            scic_employee_id,
+            scic_employee_hris_id_number,
+            scic_employee_first_name,
+            scic_employee_middle_name,
+            scic_employee_last_name,
+            scic_employee_suffix
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (scic_employee_hris_id_number)
+        DO UPDATE SET
+            scic_employee_first_name = EXCLUDED.scic_employee_first_name,
+            scic_employee_middle_name = EXCLUDED.scic_employee_middle_name,
+            scic_employee_last_name = EXCLUDED.scic_employee_last_name,
+            scic_employee_suffix = EXCLUDED.scic_employee_suffix
+        RETURNING scic_employee_id;
+    `, [
+        employeeData.scic_employee_id,
+        employeeData.scic_employee_hris_id_number,
+        employeeData.scic_employee_first_name,
+        employeeData.scic_employee_middle_name,
+        employeeData.scic_employee_last_name,
+        employeeData.scic_employee_suffix
+    ])[0].scic_employee_id;
+
+    const siteData = plv8.execute(`
+        SELECT site_id
+        FROM inventory_schema.site_table
+        WHERE site_name ILIKE $1;
+    `, [employeeData.site_name]);
+
+    const siteId = siteData[0].site_id;
+
+    const locationData = plv8.execute(`
+        SELECT location_id
+        FROM inventory_schema.location_table
+        WHERE location_name ILIKE $1;
+    `, [employeeData.location_name]);
+
+    const locationId = locationData[0].location_id;
+
+    const departmentData = plv8.execute(`
+        SELECT team_department_id
+        FROM team_schema.team_department_table
+        WHERE team_department_name ILIKE $1;
+    `, [employeeData.team_department_name]);
+
+    const departmentId = departmentData[0].team_department_id;
+
+    plv8.execute(`
+        INSERT INTO inventory_schema.inventory_employee_connection_table (
+            inventory_employee_connection_employee_id,
+            inventory_employee_connection_site_id,
+            inventory_employee_connection_location_id,
+            inventory_employee_connection_department_id
+        ) VALUES ($1, $2, $3, $4)
+        ON CONFLICT (inventory_employee_connection_employee_id)
+        DO UPDATE SET
+            inventory_employee_connection_site_id = EXCLUDED.inventory_employee_connection_site_id,
+            inventory_employee_connection_location_id = EXCLUDED.inventory_employee_connection_location_id,
+            inventory_employee_connection_department_id = EXCLUDED.inventory_employee_connection_department_id;
+    `, [employeeId, siteId, locationId, departmentId]);
 
 
+        plv8.execute(`
+            INSERT INTO inventory_request_schema.inventory_custom_response_table
+            (inventory_response_value,inventory_response_field_id,inventory_response_request_id)
+            VALUES
+            ${responseValues}
+        `);
+    })
+$$ LANGUAGE plv8;
+
+CREATE OR REPLACE FUNCTION import_customer_data(
+    input_data JSON
+)
+RETURNS JSON
+SET search_path TO ''
+AS $$
+    let insertedCount = 0;
+    let errorCount = 0;
+    let errorMessages = [];
+
+    plv8.subtransaction(function() {
+        const customer = input_data.customer;
+        const teamId = input_data.teamId;
+        if (!customer || !Array.isArray(customer)) {
+            throw new Error('Invalid input data: customer array is missing');
+        }
+
+        const chunkArray = (array, chunkSize) => {
+            const results = [];
+            while (array.length) {
+                results.push(array.splice(0, chunkSize));
+            }
+            return results;
+        };
+
+        const insertBatch = (batch) => {
+            batch.forEach(customer => {
+                    const customerInsertQuery = `
+                        INSERT INTO inventory_schema.customer_table (
+                            customer_name,
+                            customer_company,
+                            customer_email,
+                            customer_team_id
+                        ) VALUES ($1, $2, $3, $4)
+                        ON CONFLICT (customer_name)
+                        DO UPDATE SET
+                            customer_name = EXCLUDED.customer_name,
+                            customer_company = EXCLUDED.customer_company,
+                            customer_email = EXCLUDED.customer_email,
+                            customer_team_id = EXCLUDED.customer_team_id
+
+                    `;
+
+                    const customerResult = plv8.execute(customerInsertQuery, [
+                        customer.customer_name,
+                        customer.customer_company,
+                        customer.customer_email,
+                        teamId
+                    ]);
+
+                    if (customerResult.length > 0) {
+                        insertedCount += 1;
+                    }
+            });
+        };
+
+        const batches = chunkArray(customer, 10);
+        batches.forEach(batch => {
+            insertBatch(batch);
+        });
+    });
+
+    return {
+        success: insertedCount,
+    };
+$$ LANGUAGE plv8;
+
+CREATE OR REPLACE FUNCTION create_update_customer_data(
+    input_data JSON
+)
+RETURNS JSON
+SET search_path TO ''
+AS $$
+    plv8.subtransaction(function() {
+    const {
+        scic_employee_hris_id_number,
+        scic_employee_first_name,
+        scic_employee_middle_name,
+        scic_employee_last_name,
+        scic_employee_suffix,
+        site_name,
+        location_name,
+        team_department_name
+      } = input_data;
+
+      const employeeId = plv8.execute(`
+        INSERT INTO lookup_schema.scic_employee_table (
+            scic_employee_hris_id_number,
+            scic_employee_first_name,
+            scic_employee_middle_name,
+            scic_employee_last_name,
+            scic_employee_suffix
+        ) VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (scic_employee_hris_id_number)
+        DO UPDATE SET
+            scic_employee_first_name = EXCLUDED.scic_employee_first_name,
+            scic_employee_middle_name = EXCLUDED.scic_employee_middle_name,
+            scic_employee_last_name = EXCLUDED.scic_employee_last_name,
+            scic_employee_suffix = EXCLUDED.scic_employee_suffix
+        RETURNING scic_employee_id;
+    `, [
+        scic_employee_hris_id_number,
+        scic_employee_first_name,
+        scic_employee_middle_name,
+        scic_employee_last_name,
+        scic_employee_suffix
+    ])[0].scic_employee_id;
+
+    const siteData = plv8.execute(`
+        SELECT site_id
+        FROM inventory_schema.site_table
+        WHERE site_name ILIKE $1;
+    `, [site_name]);
+
+    const siteId = siteData[0].site_id;
+
+    const locationData = plv8.execute(`
+        SELECT location_id
+        FROM inventory_schema.location_table
+        WHERE location_name ILIKE $1;
+    `, [location_name]);
+
+    const locationId = locationData[0].location_id;
+
+    const departmentData = plv8.execute(`
+        SELECT team_department_id
+        FROM team_schema.team_department_table
+        WHERE team_department_name ILIKE $1;
+    `, [team_department_name]);
+
+    const departmentId = departmentData[0].team_department_id;
+
+    plv8.execute(`
+        INSERT INTO inventory_schema.inventory_employee_connection_table (
+            inventory_employee_connection_employee_id,
+            inventory_employee_connection_site_id,
+            inventory_employee_connection_location_id,
+            inventory_employee_connection_department_id
+        ) VALUES ($1, $2, $3, $4)
+        ON CONFLICT (inventory_employee_connection_employee_id)
+        DO UPDATE SET
+            inventory_employee_connection_site_id = EXCLUDED.inventory_employee_connection_site_id,
+            inventory_employee_connection_location_id = EXCLUDED.inventory_employee_connection_location_id,
+            inventory_employee_connection_department_id = EXCLUDED.inventory_employee_connection_department_id;
+    `, [employeeId, siteId, locationId, departmentId]);
+    })
+$$ LANGUAGE plv8;
+
+CREATE OR REPLACE FUNCTION get_customer_inventory_list(
+    input_data JSON
+)
+RETURNS JSON
+SET search_path TO ''
+AS $$
+    let returnData = [];
+    let totalCount = 0;
+    let requestMap = {};
+    let fieldNames = []; // Assuming fieldNames is initialized dynamically somewhere in your code
+
+    plv8.subtransaction(function() {
+        const {search, page, limit, offset, teamID} = input_data;
+        const start = (page - 1) * limit;
+
+        let query = `
+            SELECT
+              c.*
+            FROM inventory_schema.customer_table c
+            WHERE c.customer_team_id = '${teamID}'
+        `;
+
+        let countQuery = `
+            SELECT COUNT(*)
+            FROM inventory_schema.customer_table c
+            WHERE c.customer_team_id = '${teamID}'
+        `;
+
+        if (search) {
+            query += ` AND c.customer_name = '${search}'`;
+            countQuery += ` AND c.customer_name = '${search}'`;
+        }
+
+        if(page && limit){
+            query += ` LIMIT '${limit}' OFFSET '${start}'`;
+        }
+
+        const customerData = plv8.execute(query);
+        const countResult = plv8.execute(countQuery);
+
+        customerData.forEach((customer) => {
+            const customResponse = plv8.execute(`
+                SELECT f.field_name, cr.inventory_response_value
+                FROM inventory_request_schema.inventory_custom_response_table cr
+                JOIN inventory_schema.field_table f
+                ON f.field_id = cr.inventory_response_field_id
+                WHERE cr.inventory_response_request_id = '${customer.customer_id}' AND f.field_is_disabled = False
+            `);
+
+            if (!requestMap[customer.customer_id]) {
+                requestMap[customer.customer_id] = {
+                    ...customer
+                };
+            }
+
+            customResponse.forEach(customField => {
+                requestMap[customer.customer_id][customField.field_name] = customField.inventory_response_value;
+            });
+        });
+
+        Object.values(requestMap).forEach(customer => {
+            fieldNames.forEach(fieldName => {
+                if (!customer[fieldName]) {
+                    customer[fieldName] = "";
+                }
+            });
+        });
+
+        if (countResult.length > 0) {
+            totalCount = parseInt(countResult[0].count);
+        }
+        returnData = Object.values(requestMap);
+    });
+
+    return {
+        data: returnData,
+        totalCount
+    };
+$$ LANGUAGE plv8;
 
 
 
